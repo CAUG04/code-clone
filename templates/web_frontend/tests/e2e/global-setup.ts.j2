@@ -3,13 +3,17 @@
  *
  * Sin esto, los registros de una corrida anterior quedarían en la base y
  * las pruebas que cuentan filas fallarían la segunda vez.
+ *
+ * Usa process.cwd() a propósito: Playwright corre con el directorio del
+ * archivo de configuración como cwd, y `__dirname` no existe en módulos
+ * ESM (este proyecto usa "type": "module").
  */
 import { existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 
-export default function globalSetup() {
+export default function globalSetup(): void {
   for (const archivo of ["e2e.db", "e2e.db-journal", "e2e.db-wal"]) {
-    const ruta = resolve(__dirname, "../../../backend", archivo);
+    const ruta = resolve(process.cwd(), "..", "backend", archivo);
     if (existsSync(ruta)) {
       unlinkSync(ruta);
       console.log(`[e2e] base anterior borrada: ${archivo}`);

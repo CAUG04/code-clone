@@ -168,9 +168,20 @@ jobs:
         working-directory: proyectos/gym-flow/frontend
         run: npx playwright install --with-deps chromium
 
+      # La salida se emite tambien como anotaciones, porque los logs del
+      # runner no siempre son accesibles desde fuera.
       - name: Correr las pruebas E2E
         working-directory: proyectos/gym-flow/frontend
-        run: npm run test:e2e
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee /tmp/e2e.log || estado=$?
+          if [ -n "${estado:-}" ]; then
+            echo "--- diagnostico ---"
+            grep -nE "Error|error:|✘|failed|Timed out|ECONNREFUSED|Cannot find|is not defined" /tmp/e2e.log \
+              | head -8 | while IFS= read -r linea; do echo "::error::$linea"; done
+            head -25 /tmp/e2e.log | while IFS= read -r linea; do echo "::warning::$linea"; done
+            exit "$estado"
+          fi
 
       - name: Guardar el reporte si algo falló
         if: failure()
