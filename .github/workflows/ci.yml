@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    name: Pruebas del agente
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt pytest
+      - name: Correr pruebas
+        run: pytest
+
+  sin_dependencias_de_interfaz:
+    name: El núcleo funciona sin rich ni questionary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar solo lo imprescindible
+        run: pip install jinja2 pytest
+      - name: Importar y generar sin las dependencias de terminal
+        run: |
+          python -c "
+          from web.server import serve
+          from agent.ui import HAS_RICH
+          from agent.interview import demo_spec, questionary
+          from agent.generator import generate_project
+          from pathlib import Path
+          assert not HAS_RICH, 'rich no debería estar instalado en este job'
+          assert questionary is None
+          p = generate_project(demo_spec('both'), Path('salida'), use_llm=False)
+          print('generado:', p)
+          "
+      - name: Las pruebas también corren sin ellas
+        run: pytest tests/test_spec.py tests/test_generator.py
+
+  app_generada:
+    name: Las pruebas de la app generada pasan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar el agente
+        run: pip install -r requirements.txt
+
+      # Genera una app de ejemplo sin llamar al modelo, para que el
+      # resultado sea el mismo en cada corrida.
+      - name: Generar app de ejemplo (web + móvil, con login)
+        run: python cli.py --demo --platform both --yes --no-github
+
+      - name: Instalar dependencias de la app generada
+        working-directory: proyectos/gym-flow/backend
+        run: pip install -r requirements.txt
+
+      - name: Correr las pruebas de la app generada
+        working-directory: proyectos/gym-flow/backend
+        run: pytest
+
+      - name: Compilar el frontend generado
+        working-directory: proyectos/gym-flow/frontend
+        run: npm install && npm run build
+
+  app_generada_sin_login:
+    name: Las pruebas de la app sin login pasan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Generar app sin login
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from agent.interview import demo_spec
+          from agent.generator import generate_project
+          s = demo_spec("web")
+          s.needs_auth = False
+          generate_project(s, Path("proyectos"), use_llm=False, overwrite=True)
+          PY
+      - working-directory: proyectos/gym-flow/backend
+        run: pip install -r requirements.txt && pytest

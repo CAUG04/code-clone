@@ -12,9 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from rich.console import Console
-
-console = Console()
+from .ui import console
 
 
 class PublishError(RuntimeError):

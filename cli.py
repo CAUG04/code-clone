@@ -117,11 +117,10 @@ def get_spec(args: argparse.Namespace) -> tuple[AppSpec, bool]:
 
     if not llm.available():
         console.print(
-            "[yellow]No encontré cómo hablar con el modelo.[/yellow] Tienes dos opciones:\n\n"
-            "  [bold]1. Claude Code local[/bold] (no necesitas clave de API, usa tu plan):\n"
+            "[yellow]No encontré el comando `claude`.[/yellow] El agente usa tu Claude Code "
+            "local, sin clave de API:\n\n"
             "     npm install -g @anthropic-ai/claude-code\n"
-            "     claude      → inicia sesión y sal con /exit\n\n"
-            "  [bold]2. Clave de API[/bold]: pon ANTHROPIC_API_KEY en tu archivo .env"
+            "     claude      → inicia sesión y sal con /exit"
         )
         if questionary.confirm("¿Quieres probar con una app de demostración mientras tanto?", default=True).ask():
             return confirm_spec_loop(demo_spec("both"), None), False
@@ -152,7 +151,7 @@ def maybe_publish(project: Path, spec: AppSpec | None, args: argparse.Namespace,
 
 def next_steps(project: Path, spec: AppSpec) -> str:
     lines = [f"[bold]cd {project}[/bold]", "", "[bold]Backend[/bold] (terminal 1):",
-             "  cd backend && python -m venv .venv && source .venv/bin/activate",
+             "  cd backend && python3 -m venv .venv && source .venv/bin/activate",
              "  pip install -r requirements.txt && uvicorn app.main:app --reload"]
     if spec.wants_web:
         lines += ["", "[bold]Web[/bold] (terminal 2):", "  cd frontend && npm install && npm run dev",

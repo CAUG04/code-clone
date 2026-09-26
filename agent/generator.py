@@ -16,12 +16,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
-from rich.console import Console
-
 from . import llm
 from .spec import AppSpec, Entity
+from .ui import console
 
-console = Console()
+
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 ENTITY_MARKER = "__entity__"
@@ -363,7 +362,7 @@ def _readme(spec: AppSpec) -> str:
         "",
         "```bash",
         "cd backend",
-        "python -m venv .venv && source .venv/bin/activate   # Windows: .venv\\Scripts\\activate",
+        "python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\\Scripts\\activate",
         "pip install -r requirements.txt",
         "uvicorn app.main:app --reload",
         "```",

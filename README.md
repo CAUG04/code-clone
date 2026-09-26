@@ -28,26 +28,28 @@ Requiere Python 3.10+ y git.
 
 ```bash
 cd code-clone
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### El motor de IA: dos opciones
+En macOS y en muchas distribuciones de Linux el comando es `python3`, no `python`. Dentro del entorno virtual ya existen `python` y `pip` a secas, así que los comandos de más abajo funcionan tal cual. Activar el entorno también evita el error `externally-managed-environment` que da macOS al instalar paquetes fuera de uno.
 
-**Opción 1 — Claude Code local (sin clave de API).** Si ya tienes Claude Code instalado y con sesión iniciada, no configuras nada: el agente detecta el comando `claude` y lo usa con tu plan.
+### El motor de IA: tu Claude Code local
+
+**No necesitas clave de API.** El agente detecta el comando `claude` en tu PATH y usa la sesión con la que ya iniciaste sesión, contra tu propio plan.
 
 ```bash
 npm install -g @anthropic-ai/claude-code
 claude      # inicia sesión y sal con /exit
 ```
 
-El agente llama a `claude -p` por debajo, en una carpeta temporal vacía para no arrastrar el `CLAUDE.md` ni la configuración del proyecto donde estés parado. Cuando tu versión de Claude Code lo soporta, usa `--json-schema` para que las respuestas vengan estructuradas en vez de parsear texto.
+Llama a `claude -p` por debajo, en una carpeta temporal vacía para no arrastrar el `CLAUDE.md` ni la configuración del proyecto donde estés parado. Cuando tu versión de Claude Code lo soporta, usa `--json-schema` para que las respuestas vengan estructuradas en vez de parsear texto suelto.
 
-**Opción 2 — Clave de API.** Pon `ANTHROPIC_API_KEY` en el `.env`. Se paga por uso, aparte de tu suscripción.
+Ten en cuenta que estas llamadas consumen tu límite de uso del plan, igual que conversar con Claude Code, y que cada una tarda entre 15 y 40 segundos.
 
-Si tienes las dos, gana Claude Code. Puedes forzar una con `LLM_BACKEND=cli` o `LLM_BACKEND=api` en el `.env`.
+> Queda un backend de API como escape hatch para entornos sin Claude Code (un servidor, por ejemplo). No se usa nunca salvo que lo pidas con `LLM_BACKEND=api` y `ANTHROPIC_API_KEY`, y requiere `pip install anthropic`.
 
 ### GitHub (opcional)
 
@@ -125,9 +127,26 @@ Dos detalles de las sesiones de nube:
 | `--no-github` | No sube nada. |
 
 Variables opcionales en `.env`:
-- `LLM_BACKEND`: `cli` (Claude Code) o `api` (clave de API). Por defecto elige solo.
-- `ANTHROPIC_MODEL`: con `cli` acepta alias (`sonnet`, `opus`); con `api` el nombre completo.
+- `ANTHROPIC_MODEL`: alias del modelo (`sonnet`, `opus`, `haiku`).
 - `CLAUDE_CLI_TIMEOUT`: segundos de espera por llamada a Claude Code (default 300).
+- `GITHUB_TOKEN`: para subir los proyectos generados a repos nuevos.
+
+## Pruebas del propio agente
+
+```bash
+pip install pytest
+pytest
+```
+
+86 pruebas, en `tests/`:
+
+- **`test_spec.py`** — normalización de nombres (tildes, ñ, símbolos, plurales), palabras reservadas de Python, nombres que chocan con los internos, tipos de campo completos, colores inválidos, ida y vuelta por JSON.
+- **`test_generator.py`** — que solo se generen las carpetas de la plataforma pedida, que **todo el Python generado compile**, que no queden restos de plantilla Jinja, que los JSON sean válidos, que con y sin login se genere lo correcto, y que los datos de ejemplo respeten cada tipo de campo.
+- **`test_web.py`** — levanta el servidor de verdad en un puerto libre: flujo completo de la entrevista con el modelo simulado, y **seguridad del servidor**: sin token no responde nada, tokens equivocados, intentos de leer archivos del servidor (`../../etc/passwd`, `/.env`, `/agent/llm.py`), JSON roto, y que las credenciales del entorno no se filtren a la página.
+
+Las pruebas nunca llaman al modelo de verdad: el fixture `fake_llm` lo reemplaza, así que son rápidas, gratis y deterministas.
+
+El CI (`.github/workflows/ci.yml`) corre en cada push y tiene cuatro trabajos: las pruebas en Python 3.10 y 3.13, que el núcleo funcione **sin `rich` ni `questionary`**, y que **las pruebas de las apps generadas pasen** — genera una app de ejemplo, instala sus dependencias y corre su suite, con y sin login.
 
 ## Qué pruebas traen las apps generadas
 

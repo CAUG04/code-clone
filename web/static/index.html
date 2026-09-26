@@ -196,7 +196,7 @@ async function boot() {
     document.getElementById("engine").textContent =
       (h.engine_ready ? h.engine : "sin motor de IA") + (githubReady ? " · GitHub ✓" : "");
     if (!h.engine_ready) {
-      fail("No encontré cómo hablar con el modelo. Instala Claude Code e inicia sesión, o pon ANTHROPIC_API_KEY en el .env. Puedes usar la demo mientras tanto.");
+      fail("No encontré el comando claude. Instala Claude Code con: npm install -g @anthropic-ai/claude-code, corre claude para iniciar sesión, y reinicia el servidor. Puedes usar la demo mientras tanto.");
     }
   } catch (e) {
     fail("No pude hablar con el servidor: " + e.message);
@@ -452,7 +452,7 @@ function showBuilt(r) {
   html += `<p style="margin-top:14px">Para correrla, en tu PC:</p><pre>cd ${esc(r.project)}
 docker compose up --build</pre>`;
   html += `<p class="muted" style="margin-top:10px">O sin Docker:</p><pre>cd backend
-python -m venv .venv &amp;&amp; source .venv/bin/activate
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload</pre>`;
   if (wantsWeb) html += `<pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run dev</pre>`;

@@ -1,12 +1,12 @@
 """Capa de acceso al modelo.
 
-Soporta dos backends y elige solo:
+El motor es **tu Claude Code local** (`claude -p`): usa la sesión con la que
+ya iniciaste sesión, así que no hace falta clave de API ni ningún paquete de
+Python adicional.
 
-  1. "cli"  -> usa tu Claude Code local (`claude -p`). No necesita clave de
-               API: aprovecha la sesión con la que ya iniciaste sesión.
-  2. "api"  -> usa la API de Anthropic con ANTHROPIC_API_KEY.
-
-Puedes forzar uno con la variable de entorno LLM_BACKEND=cli|api.
+Queda un backend de API como escape hatch para entornos sin Claude Code
+(por ejemplo un servidor), pero no se usa salvo que lo pidas explícitamente
+con LLM_BACKEND=api y ANTHROPIC_API_KEY.
 """
 from __future__ import annotations
 
@@ -52,8 +52,6 @@ def detect_backend() -> str:
         return forced
     if claude_cli_path():
         return "cli"
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "api"
     return ""
 
 
@@ -66,7 +64,7 @@ def backend_description() -> str:
     if backend == "cli":
         return "Claude Code local (sin clave de API)"
     if backend == "api":
-        return "API de Anthropic (ANTHROPIC_API_KEY)"
+        return "API de Anthropic (LLM_BACKEND=api)"
     return "ninguno"
 
 
@@ -83,11 +81,11 @@ def _require_backend() -> str:
         )
     if not backend:
         raise LLMNotConfigured(
-            "No encontré cómo hablar con el modelo. Tienes dos opciones:\n"
-            "  1. Instalar Claude Code e iniciar sesión (no necesitas clave de API):\n"
-            "       npm install -g @anthropic-ai/claude-code\n"
-            "       claude    (inicia sesión y luego sal con /exit)\n"
-            "  2. Poner ANTHROPIC_API_KEY en tu archivo .env"
+            "No encontré el comando `claude` en el PATH. El agente usa tu\n"
+            "Claude Code local, así que instálalo e inicia sesión:\n"
+            "    npm install -g @anthropic-ai/claude-code\n"
+            "    claude      (inicia sesión y luego sal con /exit)\n"
+            "No necesitas clave de API."
         )
     return backend
 

@@ -40,11 +40,9 @@ Sin terminal interactiva y sin `--yes`, el CLI falla con un mensaje claro en vez
 
 ## El motor de IA
 
-`agent/llm.py` habla con el modelo de dos formas y elige sola:
-1. **`claude -p`** (Claude Code local) si el comando `claude` está en el PATH. No necesita clave de API.
-2. **API de Anthropic** si hay `ANTHROPIC_API_KEY`.
+`agent/llm.py` usa **`claude -p`** (el Claude Code local del usuario). No hay clave de API: si el comando `claude` no está en el PATH, el agente falla con instrucciones para instalarlo.
 
-Fuerza una con `LLM_BACKEND=cli` o `LLM_BACKEND=api`.
+Existe un backend de API como escape hatch, pero solo se activa con `LLM_BACKEND=api` explícito. No lo sugieras.
 
 Ojo: si ya estás corriendo dentro de una sesión de Claude Code, el agente llamaría a `claude -p` anidado. Funciona, pero es más lento y gasta doble. Para generar desde aquí es mejor que **tú** escribas el `spec.json` (paso 2) y corras el CLI con `--spec`, que no necesita llamar al modelo salvo para los datos de ejemplo.
 

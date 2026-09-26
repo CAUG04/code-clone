@@ -9,15 +9,21 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-import questionary
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-
 from . import llm
 from .spec import AppSpec, Entity, Field
+from .ui import Panel, Table, console
 
-console = Console()
+try:
+    import questionary
+except ImportError:  # la web y las pruebas no necesitan la interfaz de terminal
+    questionary = None  # type: ignore[assignment]
+
+
+def _need_terminal() -> None:
+    if questionary is None:
+        raise RuntimeError(
+            "Esta parte necesita el paquete `questionary`: pip install questionary"
+        )
 
 MAX_ROUNDS = 4          # rondas máximas de preguntas
 QUESTIONS_PER_ROUND = 3  # preguntas por ronda
@@ -201,6 +207,7 @@ class Interview:
     # -- pasos --------------------------------------------------------------
 
     def ask_idea(self) -> None:
+        _need_terminal()
         if self.idea.strip():
             console.print(f"[dim]Idea: {self.idea}[/dim]")
             return
@@ -217,6 +224,7 @@ class Interview:
             self.idea = questionary.text("💡 Tu idea:").ask() or ""
 
     def ask_platform(self) -> None:
+        _need_terminal()
         if self._platform_preset:
             console.print(f"[dim]Plataforma: {self.platform}[/dim]")
             return
@@ -426,6 +434,7 @@ def confirm_spec_loop(
         show_spec(spec)
         return spec
 
+    _need_terminal()
     while True:
         show_spec(spec)
         options = [questionary.Choice("✅ Se ve bien, ¡construye!", "ok")]
