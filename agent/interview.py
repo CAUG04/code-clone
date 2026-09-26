@@ -230,16 +230,33 @@ class Interview:
         ).ask()
         self.platform = choice or "web"
 
+    def record(self, question: str, answer: str) -> None:
+        """Guarda una respuesta. Lo usa tanto la terminal como la web."""
+        self.qa.append({"question": question, "answer": answer})
+
+    def next_questions(self, round_no: int) -> dict:
+        """Le pide al modelo la siguiente ronda de preguntas.
+
+        Es la parte sin interfaz: la terminal y la web la comparten.
+        Devuelve {"ready": bool, "thinking": str, "questions": [...]}.
+        """
+        data = llm.ask_json(
+            INTERVIEWER_SYSTEM + "\n\n" + QUESTIONS_FORMAT,
+            self.transcript()
+            + f"\n\nEsta es la ronda {round_no} de máximo {MAX_ROUNDS}. "
+            "Genera las siguientes preguntas.",
+            schema=QUESTIONS_SCHEMA,
+        )
+        if not isinstance(data, dict):
+            return {"ready": True, "questions": []}
+        data.setdefault("questions", [])
+        data["questions"] = (data["questions"] or [])[:QUESTIONS_PER_ROUND]
+        return data
+
     def ask_round(self, round_no: int) -> bool:
-        """Hace una ronda de preguntas. Devuelve True si ya hay suficiente info."""
+        """Hace una ronda de preguntas en la terminal. True si ya hay suficiente info."""
         with console.status("[magenta]Pensando en qué preguntarte...[/magenta]"):
-            data = llm.ask_json(
-                INTERVIEWER_SYSTEM + "\n\n" + QUESTIONS_FORMAT,
-                self.transcript()
-                + f"\n\nEsta es la ronda {round_no} de máximo {MAX_ROUNDS}. "
-                "Genera las siguientes preguntas.",
-                schema=QUESTIONS_SCHEMA,
-            )
+            data = self.next_questions(round_no)
 
         if data.get("ready") and round_no > 1:
             return True
@@ -251,11 +268,11 @@ class Interview:
         if data.get("thinking"):
             console.print(f"\n[dim italic]🤔 {data['thinking']}[/dim italic]")
 
-        for q in questions[:QUESTIONS_PER_ROUND]:
+        for q in questions:
             answer = self._ask_one(q)
             if answer is None:  # Ctrl+C
                 raise KeyboardInterrupt
-            self.qa.append({"question": q.get("question", ""), "answer": answer})
+            self.record(q.get("question", ""), answer)
 
         return False
 

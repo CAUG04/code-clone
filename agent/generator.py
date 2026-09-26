@@ -244,6 +244,54 @@ def _docker_compose(spec: AppSpec) -> str:
     return "\n".join(parts)
 
 
+def _ci_workflow(spec: AppSpec) -> str:
+    """GitHub Actions: corre las pruebas en cada push."""
+    lines = [
+        "name: Pruebas",
+        "",
+        "on:",
+        "  push:",
+        "    branches: [main]",
+        "  pull_request:",
+        "",
+        "jobs:",
+        "  backend:",
+        "    name: API y seguridad",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@v4",
+        "      - uses: actions/setup-python@v5",
+        "        with:",
+        "          python-version: '3.11'",
+        "          cache: pip",
+        "      - name: Instalar dependencias",
+        "        working-directory: backend",
+        "        run: pip install -r requirements.txt",
+        "      - name: Correr pruebas",
+        "        working-directory: backend",
+        "        run: pytest",
+    ]
+    if spec.wants_web:
+        lines += [
+            "",
+            "  frontend:",
+            "    name: Compilar web",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - uses: actions/checkout@v4",
+            "      - uses: actions/setup-node@v4",
+            "        with:",
+            "          node-version: '20'",
+            "      - name: Instalar dependencias",
+            "        working-directory: frontend",
+            "        run: npm install",
+            "      - name: Compilar (valida tipos de TypeScript)",
+            "        working-directory: frontend",
+            "        run: npm run build",
+        ]
+    return "\n".join(lines) + "\n"
+
+
 def _readme(spec: AppSpec) -> str:
     platform = {"web": "Web", "mobile": "Móvil", "both": "Web + Móvil"}[spec.platform]
     lines = [
@@ -274,6 +322,27 @@ def _readme(spec: AppSpec) -> str:
         lines.append("")
 
     lines += [
+        "## Pruebas",
+        "",
+        "El proyecto viene con pruebas de API y de seguridad, y un workflow de",
+        "GitHub Actions que las corre en cada push.",
+        "",
+        "```bash",
+        "cd backend",
+        "pip install -r requirements.txt",
+        "pytest",
+        "```",
+        "",
+        "Qué cubren:",
+        "",
+        "- **`tests/test_api.py`** — el ciclo completo de cada entidad: crear, leer,",
+        "  actualizar, eliminar, orden de la lista, 404 en ids inexistentes y 422",
+        "  cuando falta un campo obligatorio.",
+        "- **`tests/test_security.py`** — endpoints sin token, tokens inválidos,",
+        "  expirados y firmados con otra clave, **aislamiento entre usuarios**",
+        "  (que A no vea ni modifique lo de B), contraseñas con hash y sal que",
+        "  nunca aparecen en las respuestas, inyección SQL y entradas maliciosas.",
+        "",
         "## Cómo correrlo",
         "",
         "### Opción A — Todo con Docker",
@@ -387,6 +456,9 @@ def generate_project(spec: AppSpec, out_root: Path, *, use_llm: bool = True, ove
 
     (project / ".gitignore").write_text(_gitignore(), encoding="utf-8")
     (project / "docker-compose.yml").write_text(_docker_compose(spec), encoding="utf-8")
+    workflows = project / ".github" / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    (workflows / "tests.yml").write_text(_ci_workflow(spec), encoding="utf-8")
     (project / "README.md").write_text(_readme(spec), encoding="utf-8")
     (project / "spec.json").write_text(spec.to_json(), encoding="utf-8")
 

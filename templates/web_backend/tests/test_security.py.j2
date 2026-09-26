@@ -1,0 +1,257 @@
+"""Pruebas de seguridad.
+
+Cubren los fallos que de verdad se ven en producción: endpoints sin
+proteger, datos de un usuario visibles para otro, tokens manipulados,
+contraseñas que se filtran en las respuestas e inyección SQL.
+"""
+import pytest
+
+from .conftest import ENTITIES, PAYLOADS
+{% if spec.needs_auth %}
+
+
+# ---------------------------------------------------------------------------
+# Autenticación obligatoria
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_sin_token_no_se_puede_hacer_nada(client, plural):
+    """Ningún endpoint de datos debe responder sin autenticación."""
+    casos = [
+        ("get", f"/api/{plural}", {}),
+        ("post", f"/api/{plural}", {"json": PAYLOADS[plural]}),
+        ("get", f"/api/{plural}/1", {}),
+        ("put", f"/api/{plural}/1", {"json": PAYLOADS[plural]}),
+        ("delete", f"/api/{plural}/1", {}),
+    ]
+    for metodo, url, kwargs in casos:
+        res = getattr(client, metodo)(url, **kwargs)
+        assert res.status_code == 401, f"{metodo.upper()} {url} respondió {res.status_code} sin token"
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "",
+        "basura",
+        "Bearer",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.firma-inventada",
+        # Algoritmo "none": intento clásico de saltarse la firma.
+        "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIn0.",
+    ],
+)
+def test_tokens_invalidos_son_rechazados(client, token):
+    res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 401
+
+
+def test_token_firmado_con_otra_clave_es_rechazado(client, auth_a):
+    """Un token bien formado pero firmado con otra clave no debe servir."""
+    import jwt
+
+    falso = jwt.encode({"sub": "1"}, "clave-del-atacante", algorithm="HS256")
+    res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {falso}"})
+    assert res.status_code == 401
+
+
+def test_token_expirado_es_rechazado(client):
+    from datetime import datetime, timedelta, timezone
+
+    import jwt
+
+    from app.auth import ALGORITHM, SECRET_KEY
+
+    vencido = jwt.encode(
+        {"sub": "1", "exp": datetime.now(timezone.utc) - timedelta(days=1)},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {vencido}"})
+    assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Aislamiento entre usuarios — la prueba más importante
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_un_usuario_no_ve_los_datos_de_otro(client, auth_a, auth_b, plural):
+    creado = client.post(f"/api/{plural}", json=PAYLOADS[plural], headers=auth_a).json()
+
+    # B no lo ve en su lista.
+    assert client.get(f"/api/{plural}", headers=auth_b).json() == []
+
+    # Ni accediendo por id directo.
+    assert client.get(f"/api/{plural}/{creado['id']}", headers=auth_b).status_code == 404
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_un_usuario_no_puede_modificar_ni_borrar_lo_de_otro(client, auth_a, auth_b, plural):
+    creado = client.post(f"/api/{plural}", json=PAYLOADS[plural], headers=auth_a).json()
+
+    assert client.put(
+        f"/api/{plural}/{creado['id']}", json=PAYLOADS[plural], headers=auth_b
+    ).status_code == 404
+    assert client.delete(f"/api/{plural}/{creado['id']}", headers=auth_b).status_code == 404
+
+    # Y sigue intacto para su dueño.
+    assert client.get(f"/api/{plural}/{creado['id']}", headers=auth_a).status_code == 200
+
+
+def test_no_se_puede_suplantar_al_dueno_al_crear(client, auth_a, auth_b):
+    """Mandar owner_id de otro usuario en el cuerpo no debe cambiar el dueño."""
+    plural = ENTITIES[0]
+    cuerpo = dict(PAYLOADS[plural])
+    cuerpo["owner_id"] = 999  # campo que el esquema debe ignorar
+    res = client.post(f"/api/{plural}", json=cuerpo, headers=auth_a)
+    assert res.status_code == 201, res.text
+    # Sigue siendo de A, y B no lo ve.
+    assert client.get(f"/api/{plural}", headers=auth_b).json() == []
+    assert len(client.get(f"/api/{plural}", headers=auth_a).json()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Contraseñas y datos sensibles
+# ---------------------------------------------------------------------------
+
+def test_la_contrasena_nunca_viaja_en_las_respuestas(client, register):
+    data = register(client, "carla@ejemplo.com", "miClaveSecreta1")
+    texto = str(data)
+    assert "miClaveSecreta1" not in texto
+    assert "password" not in data["user"]
+    assert "password_hash" not in data["user"]
+
+    res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {data['access_token']}"})
+    assert "password_hash" not in res.json()
+
+
+def test_la_contrasena_se_guarda_con_hash_y_sal(client, register):
+    """Dos usuarios con la misma contraseña deben tener hashes distintos."""
+    from app.database import SessionLocal
+    from app.models import User
+
+    register(client, "d@ejemplo.com", "mismaClave123")
+    register(client, "e@ejemplo.com", "mismaClave123")
+
+    db = SessionLocal()
+    try:
+        hashes = [u.password_hash for u in db.query(User).all()]
+    finally:
+        db.close()
+
+    assert all("mismaClave123" not in h for h in hashes), "la contraseña quedó en texto plano"
+    assert len(set(hashes)) == len(hashes), "sin sal: contraseñas iguales dan el mismo hash"
+
+
+def test_contrasena_corta_se_rechaza(client):
+    res = client.post("/api/auth/register", json={"email": "f@ejemplo.com", "password": "123"})
+    assert res.status_code == 400
+
+
+def test_no_se_permiten_correos_duplicados(client, register):
+    register(client, "g@ejemplo.com")
+    res = client.post("/api/auth/register", json={"email": "g@ejemplo.com", "password": "otra12345"})
+    assert res.status_code == 400
+
+
+def test_el_correo_no_distingue_mayusculas(client, register):
+    register(client, "hola@ejemplo.com", "secreto123")
+    res = client.post("/api/auth/login", json={"email": "HOLA@ejemplo.com", "password": "secreto123"})
+    assert res.status_code == 200
+
+
+def test_login_con_clave_incorrecta_falla(client, register):
+    register(client, "i@ejemplo.com", "correcta123")
+    res = client.post("/api/auth/login", json={"email": "i@ejemplo.com", "password": "incorrecta"})
+    assert res.status_code == 401
+
+
+def test_el_error_de_login_no_revela_si_el_correo_existe(client, register):
+    """Mismo mensaje para correo inexistente y clave mala: no filtra usuarios."""
+    register(client, "j@ejemplo.com", "correcta123")
+    a = client.post("/api/auth/login", json={"email": "j@ejemplo.com", "password": "mala"})
+    b = client.post("/api/auth/login", json={"email": "nadie@ejemplo.com", "password": "mala"})
+    assert a.status_code == b.status_code == 401
+    assert a.json()["detail"] == b.json()["detail"]
+{% else %}
+
+
+def test_la_api_no_requiere_autenticacion(client):
+    """Esta app se generó sin login: se documenta el hecho a propósito.
+
+    Si algún día la expones a internet, actívale autenticación.
+    """
+    res = client.get(f"/api/{ENTITIES[0]}")
+    assert res.status_code == 200
+{% endif %}
+
+
+# ---------------------------------------------------------------------------
+# Inyección y entradas maliciosas
+# ---------------------------------------------------------------------------
+
+{% if spec.needs_auth %}
+{% set AUTH = ", headers=auth_a" %}
+{% set FIX = ", auth_a" %}
+{% else %}
+{% set AUTH = "" %}
+{% set FIX = "" %}
+{% endif %}
+
+def test_inyeccion_sql_no_rompe_ni_borra_nada(client{= FIX =}):
+    """SQLAlchemy usa consultas parametrizadas; esto lo verifica."""
+    plural = ENTITIES[0]
+    client.post(f"/api/{plural}", json=PAYLOADS[plural]{= AUTH =})
+
+    ataques = [
+        "'; DROP TABLE {= spec.entities[0].plural =}; --",
+        "1 OR 1=1",
+        "' OR '1'='1",
+        "1; DELETE FROM users; --",
+    ]
+    for ataque in ataques:
+        res = client.get(f"/api/{plural}/{ataque}"{= AUTH =})
+        # 404 o 422 son respuestas sanas; 500 significaría que llegó a la base.
+        assert res.status_code in (404, 422), f"'{ataque}' provocó {res.status_code}"
+
+    # La tabla sigue viva con su registro.
+    assert len(client.get(f"/api/{plural}"{= AUTH =}).json()) == 1
+
+
+def test_texto_con_html_se_guarda_tal_cual_sin_ejecutarse(client{= FIX =}):
+    """La API guarda el texto sin interpretarlo; el frontend lo escapa al mostrarlo."""
+    plural = ENTITIES[0]
+    cuerpo = dict(PAYLOADS[plural])
+    campo_texto = next(
+        (k for k, v in cuerpo.items() if isinstance(v, str) and "@" not in v and "http" not in v),
+        None,
+    )
+    if campo_texto is None:
+        pytest.skip("esta entidad no tiene campos de texto libre")
+
+    payload = "<script>alert('xss')</script>"
+    cuerpo[campo_texto] = payload
+    res = client.post(f"/api/{plural}", json=cuerpo{= AUTH =})
+    assert res.status_code == 201, res.text
+    assert res.json()[campo_texto] == payload  # intacto, ni ejecutado ni mutilado
+
+
+def test_cuerpo_json_invalido_no_tumba_el_servidor(client{= FIX =}):
+    plural = ENTITIES[0]
+    cabeceras = {"Content-Type": "application/json"}
+{% if spec.needs_auth %}
+    cabeceras.update(auth_a)  # con token, para aislar el fallo al cuerpo
+{% endif %}
+    res = client.post(f"/api/{plural}", content=b"{esto no es json", headers=cabeceras)
+    assert res.status_code in (400, 422)
+
+
+def test_texto_muy_largo_no_tumba_el_servidor(client{= FIX =}):
+    plural = ENTITIES[0]
+    cuerpo = dict(PAYLOADS[plural])
+    campo_texto = next((k for k, v in cuerpo.items() if isinstance(v, str)), None)
+    if campo_texto is None:
+        pytest.skip("esta entidad no tiene campos de texto")
+    cuerpo[campo_texto] = "A" * 100_000
+    res = client.post(f"/api/{plural}", json=cuerpo{= AUTH =})
+    assert res.status_code < 500

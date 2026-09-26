@@ -1,0 +1,104 @@
+"""Pruebas funcionales de la API: el ciclo completo de cada entidad."""
+import pytest
+
+from .conftest import ENTITIES, PAYLOADS, REQUIRED_FIELDS
+{% if spec.needs_auth %}
+{% set AUTH = ", headers=auth_a" %}
+{% set FIX = ", auth_a" %}
+{% else %}
+{% set AUTH = "" %}
+{% set FIX = "" %}
+{% endif %}
+
+
+def test_health(client):
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    assert res.json()["status"] == "ok"
+
+
+def test_openapi_disponible(client):
+    """La documentación interactiva debe cargar sin errores."""
+    res = client.get("/openapi.json")
+    assert res.status_code == 200
+    assert "paths" in res.json()
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_lista_vacia_al_inicio(client{= FIX =}, plural):
+    res = client.get(f"/api/{plural}"{= AUTH =})
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_crear_y_leer(client{= FIX =}, plural):
+    res = client.post(f"/api/{plural}", json=PAYLOADS[plural]{= AUTH =})
+    assert res.status_code == 201, res.text
+    creado = res.json()
+    assert creado["id"] > 0
+    assert "created_at" in creado
+
+    # Los valores que enviamos deben volver iguales.
+    for campo, valor in PAYLOADS[plural].items():
+        assert campo in creado, f"falta {campo} en la respuesta"
+
+    res = client.get(f"/api/{plural}/{creado['id']}"{= AUTH =})
+    assert res.status_code == 200
+    assert res.json()["id"] == creado["id"]
+
+    res = client.get(f"/api/{plural}"{= AUTH =})
+    assert len(res.json()) == 1
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_actualizar(client{= FIX =}, plural):
+    creado = client.post(f"/api/{plural}", json=PAYLOADS[plural]{= AUTH =}).json()
+    res = client.put(f"/api/{plural}/{creado['id']}", json=PAYLOADS[plural]{= AUTH =})
+    assert res.status_code == 200, res.text
+    assert res.json()["id"] == creado["id"]
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_eliminar(client{= FIX =}, plural):
+    creado = client.post(f"/api/{plural}", json=PAYLOADS[plural]{= AUTH =}).json()
+
+    res = client.delete(f"/api/{plural}/{creado['id']}"{= AUTH =})
+    assert res.status_code == 204
+
+    res = client.get(f"/api/{plural}/{creado['id']}"{= AUTH =})
+    assert res.status_code == 404
+
+    assert client.get(f"/api/{plural}"{= AUTH =}).json() == []
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_id_inexistente_da_404(client{= FIX =}, plural):
+    for metodo, kwargs in (
+        ("get", {}),
+        ("put", {"json": PAYLOADS[plural]}),
+        ("delete", {}),
+    ):
+        res = getattr(client, metodo)(f"/api/{plural}/999999"{= AUTH =}, **kwargs)
+        assert res.status_code == 404, f"{metodo} devolvió {res.status_code}"
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_falta_campo_obligatorio_da_422(client{= FIX =}, plural):
+    obligatorios = REQUIRED_FIELDS[plural]
+    if not obligatorios:
+        pytest.skip(f"{plural} no tiene campos obligatorios")
+    for campo in obligatorios:
+        cuerpo = {k: v for k, v in PAYLOADS[plural].items() if k != campo}
+        res = client.post(f"/api/{plural}", json=cuerpo{= AUTH =})
+        assert res.status_code == 422, f"aceptó {plural} sin '{campo}'"
+
+
+@pytest.mark.parametrize("plural", ENTITIES)
+def test_el_orden_es_el_mas_reciente_primero(client{= FIX =}, plural):
+    ids = [
+        client.post(f"/api/{plural}", json=PAYLOADS[plural]{= AUTH =}).json()["id"]
+        for _ in range(3)
+    ]
+    devueltos = [x["id"] for x in client.get(f"/api/{plural}"{= AUTH =}).json()]
+    assert devueltos == sorted(ids, reverse=True)

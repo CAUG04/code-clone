@@ -15,17 +15,18 @@ from typing import Literal
 Platform = Literal["web", "mobile", "both"]
 
 # Tipos de campo soportados y cómo se traducen en cada capa.
+# El último valor es un literal Python válido, para los datos de prueba.
 FIELD_TYPES = {
-    #  tipo       SQLAlchemy        Pydantic   TypeScript  input HTML
-    "string":   ("String(255)",   "str",      "string",   "text"),
-    "text":     ("Text",          "str",      "string",   "textarea"),
-    "integer":  ("Integer",       "int",      "number",   "number"),
-    "float":    ("Float",         "float",    "number",   "number"),
-    "boolean":  ("Boolean",       "bool",     "boolean",  "checkbox"),
-    "date":     ("Date",          "dt.date",     "string",   "date"),
-    "datetime": ("DateTime",      "dt.datetime", "string",   "datetime-local"),
-    "email":    ("String(255)",   "str",      "string",   "email"),
-    "url":      ("String(500)",   "str",      "string",   "url"),
+    #  tipo       SQLAlchemy      Pydantic       TypeScript  input HTML       valor de prueba
+    "string":   ("String(255)",  "str",         "string",   "text",          '"Texto de prueba"'),
+    "text":     ("Text",         "str",         "string",   "textarea",      '"Descripción larga de prueba."'),
+    "integer":  ("Integer",      "int",         "number",   "number",        "7"),
+    "float":    ("Float",        "float",       "number",   "number",        "12500.5"),
+    "boolean":  ("Boolean",      "bool",        "boolean",  "checkbox",      "True"),
+    "date":     ("Date",         "dt.date",     "string",   "date",          '"2026-01-15"'),
+    "datetime": ("DateTime",     "dt.datetime", "string",   "datetime-local", '"2026-01-15T10:30:00"'),
+    "email":    ("String(255)",  "str",         "string",   "email",         '"prueba@ejemplo.com"'),
+    "url":      ("String(500)",  "str",         "string",   "url",           '"https://ejemplo.com/x"'),
 }
 
 
@@ -68,6 +69,16 @@ class Field:
     @property
     def label(self) -> str:
         return self.name.replace("_", " ").capitalize()
+
+    @property
+    def test_literal(self) -> str:
+        """Literal Python con un valor válido, para los tests generados."""
+        return FIELD_TYPES[self.type][4]
+
+    @property
+    def wrong_type_literal(self) -> str:
+        """Un valor del tipo equivocado, para probar que la validación lo rechaza."""
+        return '"no-es-un-numero"' if self.type in ("integer", "float") else "None"
 
 
 @dataclass

@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#6d4aff" />
+<title>Code Clone</title>
+<style>
+:root {
+  --primary: #6d4aff;
+  --primary-soft: rgba(109, 74, 255, 0.12);
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --text: #16181d;
+  --muted: #6b7280;
+  --border: #e4e6ec;
+  --danger: #d92d20;
+  --ok: #067647;
+  --radius: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #8d72ff;
+    --primary-soft: rgba(141, 114, 255, 0.18);
+    --bg: #0e1014;
+    --surface: #181b21;
+    --text: #eceef2;
+    --muted: #98a0ac;
+    --border: #282d36;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.dot { width: 12px; height: 12px; border-radius: 4px; background: var(--primary); flex: none; }
+header h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+header .engine { margin-left: auto; font-size: 11px; color: var(--muted); text-align: right; max-width: 45%; }
+
+main { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+main > * { animation: in 0.25s ease-out; }
+@keyframes in { from { opacity: 0; transform: translateY(6px); } }
+
+.bubble {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; max-width: 100%;
+}
+.bubble.me {
+  background: var(--primary); color: #fff; border-color: transparent;
+  align-self: flex-end; max-width: 85%; border-bottom-right-radius: 5px;
+}
+.bubble.agent { border-bottom-left-radius: 5px; }
+.bubble p { margin: 0 0 8px; }
+.bubble p:last-child { margin: 0; }
+.muted { color: var(--muted); font-size: 14px; }
+.why { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.q { font-weight: 600; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip {
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  border-radius: 999px; padding: 9px 15px; font: inherit; font-size: 15px;
+  cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.chip:active { transform: scale(0.97); }
+.chip.on { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.chip.ghost { color: var(--muted); }
+
+label.field { display: block; margin-top: 12px; font-size: 14px; font-weight: 600; }
+input[type=text], textarea {
+  width: 100%; margin-top: 6px; font: inherit; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px;
+}
+textarea { min-height: 92px; resize: vertical; }
+input:focus, textarea:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+
+.btn {
+  font: inherit; font-weight: 600; border: 1px solid transparent;
+  border-radius: 12px; padding: 13px 18px; cursor: pointer; width: 100%;
+}
+.btn:active { transform: scale(0.99); }
+.btn:disabled { opacity: 0.5; }
+.btn.primary { background: var(--primary); color: #fff; }
+.btn.ghost { background: transparent; border-color: var(--border); color: var(--text); }
+.row { display: flex; gap: 8px; margin-top: 12px; }
+.row .btn { width: auto; flex: 1; }
+
+.spinner {
+  display: inline-block; width: 15px; height: 15px; vertical-align: -2px;
+  border: 2px solid var(--primary-soft); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.err { background: rgba(217, 45, 32, 0.1); color: var(--danger); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.plan h2 { margin: 0 0 2px; font-size: 20px; letter-spacing: -0.01em; }
+.plan .tag { color: var(--muted); margin: 0 0 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.pill { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 600; }
+.ent { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+.ent h3 { margin: 0 0 6px; font-size: 15px; }
+.ent .f { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+.ent .f code { color: var(--text); font-size: 12.5px; }
+ul.feats { margin: 8px 0 0; padding-left: 20px; font-size: 15px; }
+ul.feats li { margin-bottom: 4px; }
+a { color: var(--primary); font-weight: 600; word-break: break-all; }
+pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px; overflow-x: auto; font-size: 12.5px; margin: 10px 0 0;
+}
+.ok { color: var(--ok); font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot"></span>
+  <h1>Code Clone</h1>
+  <span class="engine" id="engine"></span>
+</header>
+<main id="feed"></main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const feed = document.getElementById("feed");
+let sessionId = null;
+let githubReady = false;
+
+// ---------- utilidades ----------
+
+function el(tag, cls, html) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+function add(node) {
+  feed.appendChild(node);
+  node.scrollIntoView({ behavior: "smooth", block: "end" });
+  return node;
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function agent(html) { return add(el("div", "bubble agent", html)); }
+function me(text) { return add(el("div", "bubble me", esc(text))); }
+function fail(msg) { return add(el("div", "err", esc(msg))); }
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type": "application/json", "X-Token": TOKEN },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({ error: "Respuesta inválida del servidor" }));
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
+
+/** Lanza un trabajo y espera su resultado, mostrando el progreso. */
+async function runJob(jobId) {
+  const box = add(el("div", "bubble agent", '<span class="spinner"></span><span>Trabajando...</span>'));
+  const label = box.querySelector("span:last-child");
+  while (true) {
+    await new Promise((r) => setTimeout(r, 1000));
+    let job;
+    try {
+      job = await api(`/api/job/${jobId}`);
+    } catch (e) {
+      box.remove();
+      throw e;
+    }
+    if (job.note) label.textContent = job.note;
+    if (job.status === "done") { box.remove(); return job.result; }
+    if (job.status === "error") { box.remove(); throw new Error(job.error); }
+  }
+}
+
+// ---------- pantalla inicial ----------
+
+async function boot() {
+  try {
+    const h = await api("/api/health");
+    githubReady = !!h.github_ready;
+    document.getElementById("engine").textContent =
+      (h.engine_ready ? h.engine : "sin motor de IA") + (githubReady ? " · GitHub ✓" : "");
+    if (!h.engine_ready) {
+      fail("No encontré cómo hablar con el modelo. Instala Claude Code e inicia sesión, o pon ANTHROPIC_API_KEY en el .env. Puedes usar la demo mientras tanto.");
+    }
+  } catch (e) {
+    fail("No pude hablar con el servidor: " + e.message);
+  }
+  askIdea();
+}
+
+function askIdea() {
+  const box = agent(`
+    <p class="q">¿Qué quieres construir hoy?</p>
+    <p class="muted">Descríbelo con tus palabras, como se lo contarías a un amigo.</p>
+    <label class="field">Tu idea
+      <textarea id="idea" placeholder="Una app para que los gimnasios de mi barrio gestionen sus clientes y membresías"></textarea>
+    </label>
+    <label class="field">¿Qué tipo de software?</label>
+    <div class="chips" id="plat"></div>
+    <button class="btn primary" style="margin-top:14px" id="go">Empezar</button>
+    <button class="btn ghost" style="margin-top:8px" id="demo">Ver una demo sin gastar nada</button>
+  `);
+
+  let platform = "web";
+  const opts = [["web", "🌐 Web"], ["mobile", "📱 Móvil"], ["both", "🌐📱 Ambas"]];
+  const chips = box.querySelector("#plat");
+  opts.forEach(([val, label]) => {
+    const c = el("button", "chip" + (val === platform ? " on" : ""), label);
+    c.onclick = () => {
+      platform = val;
+      chips.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+      c.classList.add("on");
+    };
+    chips.appendChild(c);
+  });
+
+  box.querySelector("#go").onclick = async () => {
+    const idea = box.querySelector("#idea").value.trim();
+    if (!idea) { box.querySelector("#idea").focus(); return; }
+    box.remove();
+    me(idea);
+    try {
+      const r = await api("/api/start", { idea, platform });
+      sessionId = r.session_id;
+      handle(await runJob(r.job_id));
+    } catch (e) { fail(e.message); }
+  };
+
+  box.querySelector("#demo").onclick = async () => {
+    box.remove();
+    me("Muéstrame una demo");
+    try {
+      const r = await api("/api/demo", { platform });
+      sessionId = r.session_id;
+      handle(r);
+    } catch (e) { fail(e.message); }
+  };
+}
+
+// ---------- enrutado de respuestas ----------
+
+function handle(payload) {
+  if (!payload) return;
+  if (payload.kind === "questions") return showQuestions(payload);
+  if (payload.kind === "plan") return showPlan(payload.spec);
+  if (payload.kind === "built") return showBuilt(payload);
+}
+
+// ---------- preguntas ----------
+
+function showQuestions(data) {
+  if (data.thinking) agent(`<p class="muted">🤔 ${esc(data.thinking)}</p>`);
+
+  const box = agent(`<p class="muted">Ronda ${data.round} de ${data.max_rounds}</p>`);
+  const values = data.questions.map(() => new Set());
+  const others = [];
+
+  data.questions.forEach((q, i) => {
+    const wrap = el("div", null, `
+      <p class="q" style="margin-top:14px">${esc(q.question)}</p>
+      ${q.why ? `<p class="why">${esc(q.why)}</p>` : ""}
+    `);
+    const chips = el("div", "chips");
+    (q.options || []).forEach((opt) => {
+      const c = el("button", "chip", esc(opt));
+      c.onclick = () => {
+        if (q.multi) {
+          values[i].has(opt) ? values[i].delete(opt) : values[i].add(opt);
+          c.classList.toggle("on");
+        } else {
+          values[i].clear(); values[i].add(opt);
+          chips.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+          c.classList.add("on");
+        }
+      };
+      chips.appendChild(c);
+    });
+
+    const skip = el("button", "chip ghost", "🤷 Tú decide");
+    skip.onclick = () => {
+      values[i].clear();
+      chips.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+      skip.classList.add("on");
+      other.value = "";
+    };
+    chips.appendChild(skip);
+    wrap.appendChild(chips);
+
+    const other = el("input");
+    other.type = "text";
+    other.placeholder = "O escribe tu propia respuesta...";
+    other.oninput = () => { if (other.value) skip.classList.remove("on"); };
+    wrap.appendChild(other);
+    others.push(other);
+
+    box.appendChild(wrap);
+  });
+
+  const row = el("div", "row");
+  const send = el("button", "btn primary", "Continuar");
+  const enough = el("button", "btn ghost", "Ya, constrúyela");
+  row.append(send, enough);
+  box.appendChild(row);
+
+  send.onclick = async () => {
+    const answers = data.questions.map((q, i) => {
+      const picked = [...values[i]];
+      const extra = others[i].value.trim();
+      if (extra) picked.push(extra);
+      return picked.join(", ");
+    });
+    box.querySelectorAll("button, input").forEach((b) => (b.disabled = true));
+    me(answers.map((a, i) => `${i + 1}. ${a || "tú decides"}`).join("\n"));
+    try {
+      const r = await api("/api/answers", { session_id: sessionId, answers });
+      handle(await runJob(r.job_id));
+    } catch (e) { fail(e.message); }
+  };
+
+  enough.onclick = async () => {
+    box.querySelectorAll("button, input").forEach((b) => (b.disabled = true));
+    me("Ya tienes suficiente, constrúyela");
+    try {
+      const r = await api("/api/skip", { session_id: sessionId });
+      handle(await runJob(r.job_id));
+    } catch (e) { fail(e.message); }
+  };
+}
+
+// ---------- plan ----------
+
+function showPlan(spec) {
+  const platform = { web: "🌐 Web", mobile: "📱 Móvil", both: "🌐📱 Web + Móvil" }[spec.platform] || spec.platform;
+  const box = agent(`
+    <div class="plan">
+      <h2>${esc(spec.app_name)}</h2>
+      <p class="tag">${esc(spec.tagline)}</p>
+      <p>${esc(spec.description)}</p>
+      <div class="meta">
+        <span class="pill">${esc(platform)}</span>
+        <span class="pill">${spec.needs_auth ? "Con login" : "Sin login"}</span>
+        <span class="pill">${esc(spec.color_primary)}</span>
+      </div>
+      ${spec.target_users ? `<p class="muted">Para: ${esc(spec.target_users)}</p>` : ""}
+      ${(spec.features || []).length ? `<ul class="feats">${spec.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+    </div>
+  `);
+
+  const plan = box.querySelector(".plan");
+  (spec.entities || []).forEach((e) => {
+    plan.appendChild(el("div", "ent", `
+      <h3>${esc(e.name)}</h3>
+      ${e.description ? `<p class="muted" style="font-size:13px;margin:0 0 6px">${esc(e.description)}</p>` : ""}
+      ${(e.fields || []).map((f) => `
+        <div class="f"><code>${esc(f.name)}</code><span>${esc(f.type)}${f.required ? "" : " · opcional"}</span></div>
+      `).join("")}
+    `));
+  });
+
+  const row = el("div", "row");
+  const build = el("button", "btn primary", "Construir");
+  const change = el("button", "btn ghost", "Cambiar algo");
+  row.append(build, change);
+  box.appendChild(row);
+
+  const pubWrap = el("div", null, `
+    <div class="chips" style="margin-top:12px">
+      <button class="chip on" id="p-no">Solo en mi PC</button>
+      <button class="chip" id="p-priv">+ repo privado</button>
+      <button class="chip" id="p-pub">+ repo público</button>
+    </div>
+    ${githubReady ? "" : `<p class="why">Para subir a GitHub, pon <code>GITHUB_TOKEN</code> en el .env y reinicia el servidor (o corre <code>gh auth login</code>).</p>`}
+  `);
+  box.insertBefore(pubWrap, row);
+  let publish = false, priv = true;
+  const pchips = pubWrap.querySelectorAll(".chip");
+  if (!githubReady) {
+    pubWrap.querySelector("#p-priv").disabled = true;
+    pubWrap.querySelector("#p-pub").disabled = true;
+    pubWrap.querySelectorAll(".chip[disabled]").forEach((c) => (c.style.opacity = 0.45));
+  }
+  const setPub = (btn, p, pr) => {
+    publish = p; priv = pr;
+    pchips.forEach((x) => x.classList.remove("on"));
+    btn.classList.add("on");
+  };
+  pubWrap.querySelector("#p-no").onclick = (e) => setPub(e.target, false, true);
+  pubWrap.querySelector("#p-priv").onclick = (e) => setPub(e.target, true, true);
+  pubWrap.querySelector("#p-pub").onclick = (e) => setPub(e.target, true, false);
+
+  build.onclick = async () => {
+    box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    me("Constrúyela");
+    try {
+      const r = await api("/api/build", { session_id: sessionId, publish, private: priv });
+      handle(await runJob(r.job_id));
+    } catch (e) { fail(e.message); }
+  };
+
+  change.onclick = () => {
+    box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    const ask = agent(`
+      <p class="q">¿Qué cambiarías?</p>
+      <label class="field">
+        <textarea id="fb" placeholder="Agrega una entidad de Reseñas con estrellas y comentario"></textarea>
+      </label>
+      <button class="btn primary" id="send">Aplicar cambios</button>
+    `);
+    ask.querySelector("#send").onclick = async () => {
+      const feedback = ask.querySelector("#fb").value.trim();
+      if (!feedback) return;
+      ask.remove();
+      me(feedback);
+      try {
+        const r = await api("/api/revise", { session_id: sessionId, feedback });
+        handle(await runJob(r.job_id));
+      } catch (e) { fail(e.message); }
+    };
+  };
+}
+
+// ---------- resultado ----------
+
+function showBuilt(r) {
+  let html = `<p><span class="ok">✓ Listo.</span> Tu app quedó en tu PC:</p><pre>${esc(r.project)}</pre>`;
+
+  if (r.repo_url) {
+    html += `<p style="margin-top:10px">Repositorio: <a href="${esc(r.repo_url)}" target="_blank" rel="noopener">${esc(r.repo_url)}</a></p>`;
+  } else if (r.publish_error) {
+    html += `<p class="muted" style="margin-top:10px">No pude subirlo a GitHub: ${esc(r.publish_error)}</p>`;
+  }
+
+  const wantsWeb = r.platform === "web" || r.platform === "both";
+  const wantsMobile = r.platform === "mobile" || r.platform === "both";
+
+  html += `<p style="margin-top:14px">Para correrla, en tu PC:</p><pre>cd ${esc(r.project)}
+docker compose up --build</pre>`;
+  html += `<p class="muted" style="margin-top:10px">O sin Docker:</p><pre>cd backend
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload</pre>`;
+  if (wantsWeb) html += `<pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run dev</pre>`;
+  if (wantsMobile) html += `<pre>cd mobile &amp;&amp; npm install &amp;&amp; npm run setup
+npx expo start</pre>`;
+  if (r.needs_auth) html += `<p class="muted" style="margin-top:10px">Usuario demo: <b>demo@demo.com</b> / <b>demo1234</b></p>`;
+  html += `<p class="muted" style="margin-top:10px">El README dentro del proyecto tiene el detalle completo.</p>`;
+
+  const box = agent(html);
+  const again = el("button", "btn ghost", "Crear otra app");
+  again.style.marginTop = "14px";
+  again.onclick = () => { sessionId = null; askIdea(); };
+  box.appendChild(again);
+}
+
+boot();
+</script>
+</body>
+</html>

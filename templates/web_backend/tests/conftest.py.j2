@@ -1,0 +1,90 @@
+"""Fixtures compartidos por las pruebas.
+
+Las variables de entorno se fijan ANTES de importar la app, porque el
+motor de base de datos se crea al importar `app.database`.
+"""
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+
+TMP_DB = Path(tempfile.gettempdir()) / "{= spec.slug =}_test.db"
+
+os.environ["SKIP_SEED"] = "1"                        # base vacía y predecible
+os.environ["DATABASE_URL"] = f"sqlite:///{TMP_DB}"
+os.environ["SECRET_KEY"] = "clave-solo-para-pruebas"
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.database import Base, engine  # noqa: E402
+from app.main import app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fresh_database():
+    """Cada prueba arranca con tablas vacías, para que no se contaminen."""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
+{% if spec.needs_auth %}
+
+
+def _register(client, email: str, password: str = "secreto123") -> dict:
+    res = client.post(
+        "/api/auth/register",
+        json={"email": email, "password": password, "full_name": f"Usuario {email}"},
+    )
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+@pytest.fixture
+def auth_a(client) -> dict:
+    """Cabeceras del usuario A."""
+    data = _register(client, "ana@ejemplo.com")
+    return {"Authorization": f"Bearer {data['access_token']}"}
+
+
+@pytest.fixture
+def auth_b(client) -> dict:
+    """Cabeceras del usuario B. Se usa para probar que A y B no se ven."""
+    data = _register(client, "bruno@ejemplo.com")
+    return {"Authorization": f"Bearer {data['access_token']}"}
+
+
+@pytest.fixture
+def register():
+    return _register
+{% endif %}
+
+
+# ---------------------------------------------------------------------------
+# Datos de prueba válidos por entidad
+# ---------------------------------------------------------------------------
+
+PAYLOADS = {
+{% for e in spec.entities %}
+    "{= e.plural =}": {
+{% for f in e.fields %}
+        "{= f.name =}": {= f.test_literal =},
+{% endfor %}
+    },
+{% endfor %}
+}
+
+# Campos obligatorios por entidad, para probar la validación.
+REQUIRED_FIELDS = {
+{% for e in spec.entities %}
+    "{= e.plural =}": [{% for f in e.fields %}{% if f.required %}"{= f.name =}", {% endif %}{% endfor %}],
+{% endfor %}
+}
+
+ENTITIES = [{% for e in spec.entities %}"{= e.plural =}", {% endfor %}]

@@ -3,6 +3,7 @@
 """
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -33,7 +34,12 @@ SEED_MODELS = {
 
 
 def seed_database() -> None:
-    """Carga datos de ejemplo la primera vez que arranca la app."""
+    """Carga datos de ejemplo la primera vez que arranca la app.
+
+    Los tests ponen SKIP_SEED=1 para arrancar con la base vacía.
+    """
+    if os.getenv("SKIP_SEED") == "1":
+        return
     if not SEED_FILE.exists():
         return
     db = SessionLocal()

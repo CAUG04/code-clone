@@ -21,6 +21,34 @@ class PublishError(RuntimeError):
     pass
 
 
+def publishing_method() -> str | None:
+    """Cómo se puede subir a GitHub ahora mismo, o None si no se puede.
+
+    Devuelve "token" (GITHUB_TOKEN en el entorno) o "gh" (GitHub CLI con
+    sesión iniciada). La web lo usa para no ofrecer algo que va a fallar.
+    """
+    if os.environ.get("GITHUB_TOKEN", "").strip():
+        return "token"
+    if shutil.which("gh"):
+        try:
+            res = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10)
+            if res.returncode == 0:
+                return "gh"
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return None
+
+
+def publishing_description() -> str:
+    method = publishing_method()
+    if method == "token":
+        user = os.environ.get("GITHUB_USERNAME", "").strip()
+        return f"GITHUB_TOKEN{f' ({user})' if user else ''}"
+    if method == "gh":
+        return "GitHub CLI (gh)"
+    return "sin configurar"
+
+
 def _run(cmd: list[str], cwd: Path, secret: str | None = None) -> str:
     res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if res.returncode != 0:

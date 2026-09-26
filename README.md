@@ -9,7 +9,10 @@ Describe tu idea en lenguaje natural. El agente:
    - **Backend:** FastAPI + SQLAlchemy (SQLite en local, Postgres con Docker), login con JWT, CRUD por cada entidad y datos de ejemplo realistas.
    - **Web:** React + Vite + TypeScript, responsive, modo oscuro, búsqueda, formularios.
    - **Móvil:** React Native con Expo (iOS y Android), mismas funciones.
+   - **Pruebas:** suite de pytest con pruebas funcionales y de seguridad, más CI en GitHub Actions.
 5. **Lo sube a un repositorio nuevo en GitHub** (privado por defecto).
+
+Puedes usarlo de tres formas: en tu terminal, desde el celular con la web que corre en tu PC, o desde una sesión de nube en [claude.ai/code](https://claude.ai/code).
 
 ```
 ┌───────────┐   ┌──────────────┐   ┌──────────────┐   ┌─────────────┐   ┌────────┐
@@ -66,6 +69,27 @@ python cli.py --out ~/mis-apps             # otra carpeta de salida
 
 Los proyectos se crean en `./proyectos/<nombre-de-la-app>/`, cada uno con su propio README explicando cómo correrlo.
 
+## Uso desde el celular (web en tu PC)
+
+```bash
+python serve.py
+```
+
+Imprime un enlace con la IP de tu PC y una clave. Lo abres en el celular (misma WiFi) y tienes la misma entrevista, con botones en vez de flechas. El trabajo lo hace tu PC, así que **usa tu sesión de Claude Code sin clave de API**, y el proyecto generado queda en tu disco donde sí lo puedes correr.
+
+```bash
+python serve.py --port 9000      # otro puerto
+python serve.py --out ~/mis-apps # otra carpeta de salida
+```
+
+Para entrar desde fuera de tu casa, levanta un túnel:
+
+```bash
+cloudflared tunnel --url http://localhost:8777
+```
+
+El servidor **no usa dependencias adicionales** — solo la librería estándar de Python. El enlace lleva una clave aleatoria que cambia en cada arranque; sin ella el servidor no responde.
+
 ## Uso sin terminal (nube, CI, u otro agente)
 
 La entrevista necesita una terminal de verdad: `questionary` usa flechas y Enter. Donde no hay terminal, pasa `--yes` y todo lo que haya que decidir:
@@ -105,21 +129,36 @@ Variables opcionales en `.env`:
 - `ANTHROPIC_MODEL`: con `cli` acepta alias (`sonnet`, `opus`); con `api` el nombre completo.
 - `CLAUDE_CLI_TIMEOUT`: segundos de espera por llamada a Claude Code (default 300).
 
+## Qué pruebas traen las apps generadas
+
+Cada proyecto incluye su propia suite, que corres con `cd backend && pytest`:
+
+- **`tests/test_api.py`** — el ciclo completo de cada entidad: crear, leer, actualizar, eliminar, orden de la lista, 404 en ids inexistentes, 422 cuando falta un campo obligatorio.
+- **`tests/test_security.py`** — endpoints sin token, tokens inválidos, expirados, con algoritmo `none` y firmados con otra clave; **aislamiento entre usuarios** (que A no pueda ver ni modificar lo de B); intento de suplantar al dueño mandando `owner_id`; contraseñas con hash y sal que nunca aparecen en las respuestas; mensajes de login que no revelan si un correo existe; inyección SQL y entradas maliciosas.
+
+Son pruebas parametrizadas por entidad, así que crecen con la app: una app de 4 entidades genera unos 50 casos. El workflow `.github/workflows/tests.yml` las corre en cada push, y compila el frontend para validar los tipos de TypeScript.
+
 ## Estructura
 
 ```
-cli.py                  Punto de entrada y flujo interactivo
+cli.py                  Punto de entrada de la terminal
+serve.py                Arranca la web para el celular
 agent/
   interview.py          Agente entrevistador (preguntas, plan, revisiones)
   llm.py                Backends del modelo (Claude Code local o API) + parseo de JSON
   spec.py               AppSpec: el "contrato" entre la entrevista y el generador
-  generator.py          Renderiza plantillas y genera datos de ejemplo
+  generator.py          Renderiza plantillas, datos de ejemplo, CI
   github_publish.py     git init/commit + crear repo + push
+web/
+  server.py             Servidor HTTP (solo librería estándar)
+  static/index.html     La interfaz de chat, pensada para celular
 templates/
-  web_backend/          FastAPI (un router por entidad vía __entity__.py.j2)
+  web_backend/          FastAPI + pruebas (un router por entidad vía __entity__.py.j2)
   web_frontend/         React + Vite + TS
   mobile/               Expo / React Native
 ```
+
+La lógica de la entrevista vive en `agent/`, y tanto la terminal como la web la usan: `Interview.next_questions()` pide las preguntas al modelo y cada interfaz decide cómo mostrarlas.
 
 Las plantillas usan Jinja2 con delimitadores `{= variable =}` y `{% bloque %}` para no chocar con las llaves de JSX/CSS. Un archivo llamado `__entity__.*.j2` se genera una vez por cada entidad.
 

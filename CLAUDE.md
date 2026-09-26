@@ -56,6 +56,30 @@ python cli.py --demo --platform both --yes --no-github
 
 Genera la app de ejemplo "GymFlow" sin llamar al modelo. Úsalo para verificar que los generadores siguen funcionando después de tocar plantillas.
 
+Las apps generadas traen su propia suite de pruebas. Después de cambiar plantillas del backend, verifica que sigan pasando:
+
+```bash
+cd proyectos/gym-flow/backend && pip install -r requirements.txt && pytest
+```
+
+## Pruebas en las apps generadas
+
+Cada proyecto incluye `backend/tests/`:
+- `test_api.py` — CRUD por entidad, validación, 404s, orden de la lista.
+- `test_security.py` — autenticación obligatoria, tokens manipulados y expirados, **aislamiento entre usuarios**, contraseñas con hash y sal, inyección SQL.
+
+Están parametrizadas por entidad, así que se adaptan solas al `spec.json`. Si agregas un tipo de campo nuevo en `agent/spec.py`, dale también un `test_literal` o los datos de prueba saldrán mal.
+
+Los tests ponen `SKIP_SEED=1` para arrancar con la base vacía; `app/main.py` respeta esa variable.
+
+## La web para celular
+
+`python serve.py` levanta un servidor con **solo librería estándar** (sin FastAPI) y lo abres desde el celular. Vive en `web/`:
+- `web/server.py` — rutas, trabajos en segundo plano con sondeo (las llamadas al modelo tardan hasta un minuto y el navegador del celular no puede esperar con la conexión abierta).
+- `web/static/index.html` — una sola página, sin build.
+
+Si agregas un endpoint, recuerda que todo lo lento va como trabajo: `start_job(...)` devuelve un id y el navegador consulta `/api/job/<id>`.
+
 ## Estructura
 
 - `cli.py` — punto de entrada y flujo interactivo
