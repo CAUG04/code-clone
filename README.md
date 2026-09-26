@@ -164,16 +164,28 @@ pip install pytest
 pytest
 ```
 
-130 pruebas, en `tests/`:
+149 pruebas, en `tests/`:
 
 - **`test_spec.py`** — normalización de nombres (tildes, ñ, símbolos, plurales), palabras reservadas de Python, nombres que chocan con los internos, tipos de campo completos, colores inválidos, ida y vuelta por JSON.
 - **`test_generator.py`** — que solo se generen las carpetas de la plataforma pedida, que **todo el Python generado compile**, que no queden restos de plantilla Jinja, que los JSON sean válidos, que con y sin login se genere lo correcto, y que los datos de ejemplo respeten cada tipo de campo.
 - **`test_iterate.py`** — la máquina de estados del modo iteración con el modelo simulado: el bucle de reparación (que reintente, que le pase la salida de pytest, que se rinda tras el máximo), que el commit quede marcado cuando las pruebas fallan, el revert, y que las herramientas permitidas no incluyan Bash libre ni instalación de paquetes.
+- **`test_e2e_generado.py`** — la consistencia de las pruebas E2E generadas. La clave: que **cada `data-testid` que usan exista de verdad** en el frontend, porque un selector mal escrito produce pruebas que fallan siempre o, peor, que no prueban nada. También que los valores de prueba encajen con el tipo de cada campo, y que una app sin login no use selectores de autenticación.
 - **`test_web.py`** y **`test_web_iterate.py`** — levantan el servidor de verdad en un puerto libre: flujo completo de la entrevista con el modelo simulado, y **seguridad del servidor**: sin token no responde nada, tokens equivocados, intentos de leer archivos del servidor (`../../etc/passwd`, `/.env`, `/agent/llm.py`), JSON roto, que las credenciales del entorno no se filtren a la página, y que el nombre de proyecto que llega del navegador no pueda apuntar fuera de la carpeta de salida.
 
 Las pruebas nunca llaman al modelo de verdad: el fixture `fake_llm` lo reemplaza, así que son rápidas, gratis y deterministas.
 
-El CI (`.github/workflows/ci.yml`) corre en cada push y tiene cuatro trabajos: las pruebas en Python 3.10 y 3.13, que el núcleo funcione **sin `rich` ni `questionary`**, y que **las pruebas de las apps generadas pasen** — genera una app de ejemplo, instala sus dependencias y corre su suite, con y sin login.
+El CI (`.github/workflows/ci.yml`) corre en cada push:
+
+| Trabajo | Qué verifica |
+|---|---|
+| `pruebas` | Las 149 pruebas, en Python 3.10 y 3.13 |
+| `sin_dependencias_de_interfaz` | Que el núcleo funcione instalando solo Jinja2 |
+| `iteracion` | Que las apps generadas queden listas para iterar (git limpio, `CLAUDE.md`) |
+| `app_generada` | Genera una app, instala sus dependencias y **corre su suite de pytest** |
+| `app_generada_sin_login` | Lo mismo para la variante sin autenticación |
+| `e2e` | Instala Chromium y **corre las pruebas de Playwright** de verdad, con y sin login |
+
+Los dos últimos grupos son los que importan: no basta con que el agente genere pruebas, tienen que pasar.
 
 ## Qué pruebas traen las apps generadas
 
@@ -182,7 +194,22 @@ Cada proyecto incluye su propia suite, que corres con `cd backend && pytest`:
 - **`tests/test_api.py`** — el ciclo completo de cada entidad: crear, leer, actualizar, eliminar, orden de la lista, 404 en ids inexistentes, 422 cuando falta un campo obligatorio.
 - **`tests/test_security.py`** — endpoints sin token, tokens inválidos, expirados, con algoritmo `none` y firmados con otra clave; **aislamiento entre usuarios** (que A no pueda ver ni modificar lo de B); intento de suplantar al dueño mandando `owner_id`; contraseñas con hash y sal que nunca aparecen en las respuestas; mensajes de login que no revelan si un correo existe; inyección SQL y entradas maliciosas.
 
-Son pruebas parametrizadas por entidad, así que crecen con la app: una app de 4 entidades genera unos 50 casos. El workflow `.github/workflows/tests.yml` las corre en cada push, y compila el frontend para validar los tipos de TypeScript.
+Y para la web, pruebas **E2E con Playwright** en `frontend/tests/e2e/`:
+
+- **`humo.spec.ts`** — la app carga, el menú lleva a todas las secciones, y no hay errores de JavaScript al recorrerla.
+- **`crud.spec.ts`** — por cada entidad: crear, editar, eliminar (aceptando el `confirm()`), cancelar, buscar y filtrar, y que los datos sobrevivan a recargar.
+- **`seguridad.spec.ts`** — que el HTML guardado **no se ejecute** al pintarse, que un usuario **no vea los datos de otro** (con dos usuarios reales en el navegador), que cerrar sesión borre el token, que un token inventado en `localStorage` no dé acceso, y que la contraseña no quede escrita en la página.
+
+```bash
+cd frontend
+npm install
+npx playwright install chromium   # solo la primera vez
+npm run test:e2e
+```
+
+Playwright levanta el backend y el frontend por sí solo, con una base de datos aparte, así que no hay que arrancar nada a mano. Para verlas correr en vivo: `npm run test:e2e:ui`.
+
+Todas las pruebas están parametrizadas por entidad, así que crecen con la app: una app de 4 entidades genera unos 50 casos de pytest y unos 30 de Playwright. El workflow `.github/workflows/tests.yml` corre las de pytest en cada push y compila el frontend para validar los tipos.
 
 ## Estructura
 

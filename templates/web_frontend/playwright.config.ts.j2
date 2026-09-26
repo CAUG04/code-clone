@@ -1,0 +1,51 @@
+import { defineConfig, devices } from "@playwright/test";
+
+// Playwright levanta el backend y el frontend por sí solo y espera a que
+// respondan, así no hay que arrancar nada a mano ni en CI.
+const API = "http://127.0.0.1:8001";
+const WEB = "http://127.0.0.1:4173";
+
+export default defineConfig({
+  testDir: "./tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
+  fullyParallel: false,        // comparten una sola base de datos
+  workers: 1,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  timeout: 30_000,
+  expect: { timeout: 7_000 },
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+
+  use: {
+    baseURL: WEB,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
+
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+
+  webServer: [
+    {
+      // Base propia y sin datos de ejemplo: las pruebas crean lo que necesitan.
+      command:
+        "python -m uvicorn app.main:app --host 127.0.0.1 --port 8001",
+      cwd: "../backend",
+      url: `${API}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        DATABASE_URL: "sqlite:///./e2e.db",
+        SECRET_KEY: "clave-solo-para-e2e",
+        SKIP_SEED: "1",
+      },
+    },
+    {
+      command: `npm run build && npm run preview -- --port 4173 --host 127.0.0.1`,
+      url: WEB,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+      env: { VITE_API_URL: API },
+    },
+  ],
+});

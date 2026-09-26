@@ -1,0 +1,18 @@
+/**
+ * Borra la base de datos de E2E antes de la corrida.
+ *
+ * Sin esto, los registros de una corrida anterior quedarían en la base y
+ * las pruebas que cuentan filas fallarían la segunda vez.
+ */
+import { existsSync, unlinkSync } from "node:fs";
+import { resolve } from "node:path";
+
+export default function globalSetup() {
+  for (const archivo of ["e2e.db", "e2e.db-journal", "e2e.db-wal"]) {
+    const ruta = resolve(__dirname, "../../../backend", archivo);
+    if (existsSync(ruta)) {
+      unlinkSync(ruta);
+      console.log(`[e2e] base anterior borrada: ${archivo}`);
+    }
+  }
+}

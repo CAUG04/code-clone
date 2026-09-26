@@ -1,0 +1,166 @@
+/**
+ * Seguridad vista desde el navegador.
+ *
+ * Complementa las pruebas de pytest: aquí se verifica lo que solo se puede
+ * comprobar con una interfaz real — que el XSS no se ejecute al pintarse,
+ * que la sesión se limpie de verdad, y que un usuario no alcance los datos
+ * de otro ni manipulando el almacenamiento del navegador.
+ */
+import { expect, test } from "@playwright/test";
+
+import { API, ENTITIES, crearRegistro, irA, nuevoCorreo, textoUnico } from "./ayudas";
+{% if spec.needs_auth %}
+import { CLAVE, entrar, registrarse } from "./ayudas";
+{% else %}
+import { abrirApp } from "./ayudas";
+{% endif %}
+
+const PAYLOAD_XSS = "<script>window.__xss = true</script>";
+
+test("el HTML guardado no se ejecuta al mostrarse", async ({ page }) => {
+{% if spec.needs_auth %}
+  await registrarse(page);
+{% else %}
+  await abrirApp(page);
+{% endif %}
+  const entidad = ENTITIES[0];
+  const campo = entidad.fields.find((f) => f.type === "string" || f.type === "text");
+  test.skip(!campo, "esta entidad no tiene campos de texto");
+
+  await irA(page, entidad);
+  await crearRegistro(page, entidad, { [campo!.name]: PAYLOAD_XSS });
+
+  // Se guardó tal cual, pero como texto: React escapa al pintar.
+  await expect(page.getByTestId("rows")).toContainText("<script>");
+  expect(await page.evaluate(() => (window as any).__xss)).toBeUndefined();
+  expect(await page.locator("script:has-text('window.__xss')").count()).toBe(0);
+});
+
+test("una URL inventada no rompe la app", async ({ page }) => {
+{% if spec.needs_auth %}
+  await registrarse(page);
+{% else %}
+  await abrirApp(page);
+{% endif %}
+  await page.goto("/seccion-que-no-existe");
+  await expect(page.getByTestId("app")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Cannot read");
+});
+{% if spec.needs_auth %}
+
+test("sin sesión la API no entrega datos aunque se pida directo", async ({ request }) => {
+  for (const entidad of ENTITIES) {
+    const res = await request.get(`${API}/api/${entidad.plural}`);
+    expect(res.status()).toBe(401);
+  }
+});
+
+test("un usuario no ve los datos de otro", async ({ page }) => {
+  const entidad = ENTITIES[0];
+  const campoVisible = entidad.fields.find((f) => f.name === entidad.displayField);
+  const secreto = textoUnico("SECRETO-DE-ANA");
+
+  // Ana crea un registro.
+  await registrarse(page, nuevoCorreo("ana"));
+  await irA(page, entidad);
+  await crearRegistro(page, entidad, campoVisible ? { [entidad.displayField]: secreto } : {});
+  await expect(page.getByTestId("row")).toHaveCount(1);
+  await page.getByTestId("logout").click();
+  await expect(page.getByTestId("login-page")).toBeVisible();
+
+  // Bruno entra y no debe ver nada de Ana.
+  await registrarse(page, nuevoCorreo("bruno"));
+  await irA(page, entidad);
+  await expect(page.getByTestId("row")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(secreto);
+});
+
+test("cerrar sesión borra el token del navegador", async ({ page }) => {
+  await registrarse(page);
+  const antes = await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.includes("token")).length,
+  );
+  expect(antes).toBeGreaterThan(0);
+
+  await page.getByTestId("logout").click();
+  await expect(page.getByTestId("login-page")).toBeVisible();
+
+  const despues = await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.includes("token")).length,
+  );
+  expect(despues).toBe(0);
+});
+
+test("recargar tras cerrar sesión no devuelve la app", async ({ page }) => {
+  await registrarse(page);
+  await page.getByTestId("logout").click();
+  await page.reload();
+  await expect(page.getByTestId("login-page")).toBeVisible();
+  await expect(page.getByTestId("app")).toHaveCount(0);
+});
+
+test("un token inventado en el navegador no da acceso", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    for (const clave of ["{= spec.slug =}_token"]) {
+      localStorage.setItem(clave, "token.completamente.inventado");
+    }
+  });
+  await page.reload();
+  // La app intenta cargar, la API responde 401 y vuelve al acceso.
+  await expect(page.getByTestId("login-page")).toBeVisible({ timeout: 15_000 });
+});
+
+test("el token de un usuario no sirve para ver los datos de otro", async ({ page, request }) => {
+  const entidad = ENTITIES[0];
+
+  // Ana crea algo y nos quedamos con su token.
+  const correoAna = await registrarse(page, nuevoCorreo("ana"));
+  await irA(page, entidad);
+  await crearRegistro(page, entidad);
+  const tokenAna = await page.evaluate(() => localStorage.getItem("{= spec.slug =}_token"));
+  await page.getByTestId("logout").click();
+
+  // Bruno se registra y obtiene su propio token.
+  await registrarse(page, nuevoCorreo("bruno"));
+  const tokenBruno = await page.evaluate(() => localStorage.getItem("{= spec.slug =}_token"));
+  expect(tokenBruno).not.toBe(tokenAna);
+
+  // Con el token de Bruno, la lista viene vacía.
+  const res = await request.get(`${API}/api/${entidad.plural}`, {
+    headers: { Authorization: `Bearer ${tokenBruno}` },
+  });
+  expect(res.ok()).toBeTruthy();
+  expect(await res.json()).toEqual([]);
+});
+
+test("la contraseña equivocada muestra un error y no entra", async ({ page }) => {
+  const correo = await registrarse(page);
+  await page.getByTestId("logout").click();
+
+  await entrar(page, correo, "claveIncorrecta");
+  await expect(page.getByTestId("auth-error")).toBeVisible();
+  await expect(page.getByTestId("app")).toHaveCount(0);
+});
+
+test("no se puede registrar dos veces el mismo correo", async ({ page }) => {
+  const correo = await registrarse(page);
+  await page.getByTestId("logout").click();
+
+  await page.getByTestId("toggle-mode").click();
+  await page.getByTestId("email").fill(correo);
+  await page.getByTestId("password").fill(CLAVE);
+  await page.getByTestId("submit").click();
+
+  await expect(page.getByTestId("auth-error")).toBeVisible();
+});
+
+test("la contraseña no queda escrita en la página ni en el almacenamiento", async ({ page }) => {
+  await registrarse(page);
+  const html = await page.content();
+  expect(html).not.toContain(CLAVE);
+
+  const guardado = await page.evaluate(() => JSON.stringify(localStorage));
+  expect(guardado).not.toContain(CLAVE);
+});
+{% endif %}

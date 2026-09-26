@@ -1,0 +1,134 @@
+/** El ciclo completo de cada entidad, tal como lo haría una persona. */
+import { expect, test } from "@playwright/test";
+
+import { ENTITIES, crearRegistro, irA, textoUnico } from "./ayudas";
+{% if spec.needs_auth %}
+import { registrarse } from "./ayudas";
+{% else %}
+import { abrirApp, limpiar } from "./ayudas";
+{% endif %}
+
+test.beforeEach(async ({ page, request }) => {
+{% if spec.needs_auth %}
+  // Cada prueba usa un usuario nuevo: eso ya la aísla de las demás.
+  await registrarse(page);
+{% else %}
+  await limpiar(request);
+  await abrirApp(page);
+{% endif %}
+});
+
+for (const entidad of ENTITIES) {
+  test.describe(entidad.titlePlural, () => {
+    test(`crear un ${entidad.title} y verlo en la lista`, async ({ page }) => {
+      await irA(page, entidad);
+
+      const texto = textoUnico(`Nuevo ${entidad.title}`);
+      const campoVisible = entidad.fields.find((f) => f.name === entidad.displayField);
+      const visible = await crearRegistro(
+        page, entidad, campoVisible ? { [entidad.displayField]: texto } : {},
+      );
+
+      await expect(page.getByTestId("row")).toHaveCount(1);
+      if (visible) await expect(page.getByTestId("rows")).toContainText(visible);
+    });
+
+    test(`editar un ${entidad.title}`, async ({ page }) => {
+      await irA(page, entidad);
+      await crearRegistro(page, entidad);
+
+      await page.getByTestId("edit").first().click();
+      await expect(page.getByTestId("form")).toBeVisible();
+
+      const campoTexto = entidad.fields.find(
+        (f) => f.type === "string" || f.type === "text",
+      );
+      test.skip(!campoTexto, "esta entidad no tiene campos de texto que editar");
+
+      const nuevo = textoUnico("Editado");
+      await page.getByTestId(`field-${campoTexto!.name}`).fill(nuevo);
+      await page.getByTestId("save").click();
+      await expect(page.getByTestId("form")).toBeHidden();
+      await expect(page.getByTestId("rows")).toContainText(nuevo);
+    });
+
+    test(`eliminar un ${entidad.title}`, async ({ page }) => {
+      await irA(page, entidad);
+      await crearRegistro(page, entidad);
+      await expect(page.getByTestId("row")).toHaveCount(1);
+
+      page.once("dialog", (d) => d.accept());   // el confirm() de eliminar
+      await page.getByTestId("delete").first().click();
+
+      await expect(page.getByTestId("row")).toHaveCount(0);
+      await expect(page.getByTestId("empty")).toBeVisible();
+    });
+
+    test(`cancelar no crea el ${entidad.title}`, async ({ page }) => {
+      await irA(page, entidad);
+      await page.getByTestId("new-first").click();
+      await expect(page.getByTestId("form")).toBeVisible();
+      await page.getByTestId("cancel").click();
+      await expect(page.getByTestId("form")).toBeHidden();
+      await expect(page.getByTestId("row")).toHaveCount(0);
+    });
+
+    test(`la búsqueda filtra los ${entidad.titlePlural}`, async ({ page }) => {
+      await irA(page, entidad);
+
+      const campoVisible = entidad.fields.find((f) => f.name === entidad.displayField);
+      test.skip(!campoVisible, "esta entidad no tiene un campo visible que buscar");
+
+      const uno = textoUnico("Alfa");
+      const dos = textoUnico("Bravo");
+      await crearRegistro(page, entidad, { [entidad.displayField]: uno });
+      await crearRegistro(page, entidad, { [entidad.displayField]: dos });
+      await expect(page.getByTestId("row")).toHaveCount(2);
+
+      await page.getByTestId("search").fill(uno);
+      await expect(page.getByTestId("row")).toHaveCount(1);
+      await expect(page.getByTestId("rows")).toContainText(uno);
+
+      await page.getByTestId("search").fill("zzz-no-existe-zzz");
+      await expect(page.getByTestId("row")).toHaveCount(0);
+      await expect(page.getByTestId("empty")).toBeVisible();
+
+      await page.getByTestId("search").fill("");
+      await expect(page.getByTestId("row")).toHaveCount(2);
+    });
+
+    test(`los cambios sobreviven a recargar la página`, async ({ page }) => {
+      await irA(page, entidad);
+      const campoVisible = entidad.fields.find((f) => f.name === entidad.displayField);
+      const texto = textoUnico("Persistente");
+      await crearRegistro(page, entidad, campoVisible ? { [entidad.displayField]: texto } : {});
+
+      await page.reload();
+      await irA(page, entidad);
+      await expect(page.getByTestId("row")).toHaveCount(1);
+    });
+  });
+}
+
+test("el contador de la portada refleja lo creado", async ({ page }) => {
+  const entidad = ENTITIES[0];
+  await irA(page, entidad);
+  await crearRegistro(page, entidad);
+
+  await page.getByTestId("nav-home").click();
+  const tarjeta = page.getByTestId(`stat-${entidad.plural}`);
+  await expect(tarjeta.getByTestId("stat-value")).toHaveText("1");
+});
+
+test("los campos obligatorios no se pueden dejar vacíos", async ({ page }) => {
+  const entidad = ENTITIES.find((e) => e.fields.some((f) => f.required && f.type !== "boolean"));
+  test.skip(!entidad, "ninguna entidad tiene campos obligatorios de texto");
+
+  await irA(page, entidad!);
+  await page.getByTestId("new-first").click();
+  await page.getByTestId("save").click();
+
+  // El formulario sigue abierto: el navegador bloqueó el envío.
+  await expect(page.getByTestId("form")).toBeVisible();
+  await expect(page.getByTestId("row")).toHaveCount(0);
+});

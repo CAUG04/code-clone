@@ -32,8 +32,8 @@ export default function Home() {
 
       <section className="stats">
         {ENTITIES.map((e) => (
-          <Link key={e.plural} to={`/${e.plural}`} className="card stat">
-            <span className="stat-value">{counts[e.plural] ?? "–"}</span>
+          <Link key={e.plural} to={`/${e.plural}`} className="card stat" data-testid={`stat-${e.plural}`}>
+            <span className="stat-value" data-testid="stat-value">{counts[e.plural] ?? "–"}</span>
             <span className="stat-label">{e.titlePlural}</span>
             <span className="muted small">{e.description}</span>
           </Link>

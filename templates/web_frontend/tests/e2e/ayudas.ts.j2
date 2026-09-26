@@ -1,0 +1,115 @@
+/**
+ * Utilidades compartidas por las pruebas E2E.
+ *
+ * Generado desde el spec, así que los datos de prueba coinciden con los
+ * campos reales de cada entidad.
+ */
+import { APIRequestContext, Page, expect } from "@playwright/test";
+
+export const API = "http://127.0.0.1:8001";
+
+/** Metadatos de las entidades, con un valor válido por campo. */
+export const ENTITIES = {= e2e_entities_json =} as {
+  plural: string;
+  title: string;
+  titlePlural: string;
+  displayField: string;
+  fields: { name: string; type: string; required: boolean; value: string | number | boolean }[];
+}[];
+
+/** Un correo distinto en cada corrida, para no chocar con datos previos. */
+export function nuevoCorreo(prefijo = "e2e"): string {
+  return `${prefijo}-${Date.now()}-${Math.floor(Math.random() * 10000)}@ejemplo.com`;
+}
+
+/** Texto único, para poder buscarlo en la lista sin ambigüedad. */
+export function textoUnico(base = "Prueba"): string {
+  return `${base} ${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+{% if spec.needs_auth %}
+
+export const CLAVE = "secreto123";
+
+/** Registra un usuario nuevo por la interfaz y queda dentro de la app. */
+export async function registrarse(page: Page, correo = nuevoCorreo()): Promise<string> {
+  await page.goto("/");
+  await page.getByTestId("toggle-mode").click();
+  await page.getByTestId("full-name").fill("Usuario E2E");
+  await page.getByTestId("email").fill(correo);
+  await page.getByTestId("password").fill(CLAVE);
+  await page.getByTestId("submit").click();
+  await expect(page.getByTestId("app")).toBeVisible();
+  return correo;
+}
+
+export async function entrar(page: Page, correo: string, clave = CLAVE): Promise<void> {
+  await page.goto("/");
+  await page.getByTestId("email").fill(correo);
+  await page.getByTestId("password").fill(clave);
+  await page.getByTestId("submit").click();
+}
+{% else %}
+
+/** Sin login: basta con abrir la app. */
+export async function abrirApp(page: Page): Promise<void> {
+  await page.goto("/");
+  await expect(page.getByTestId("app")).toBeVisible();
+}
+
+/**
+ * Borra todos los registros por la API.
+ *
+ * Sin login no hay aislamiento entre pruebas: todas comparten los mismos
+ * datos, así que cada una tiene que empezar de cero.
+ */
+export async function limpiar(request: APIRequestContext): Promise<void> {
+  for (const entidad of ENTITIES) {
+    const res = await request.get(`${API}/api/${entidad.plural}`);
+    if (!res.ok()) continue;
+    for (const item of (await res.json()) as { id: number }[]) {
+      await request.delete(`${API}/api/${entidad.plural}/${item.id}`);
+    }
+  }
+}
+{% endif %}
+
+/** Llena el formulario de una entidad. Devuelve el valor del campo visible. */
+export async function llenarFormulario(
+  page: Page,
+  entidad: (typeof ENTITIES)[number],
+  sobrescribir: Record<string, string> = {},
+): Promise<string> {
+  let visible = "";
+  for (const campo of entidad.fields) {
+    const input = page.getByTestId(`field-${campo.name}`);
+    if (campo.type === "boolean") {
+      if (campo.value === true) await input.check();
+      continue;
+    }
+    const valor = sobrescribir[campo.name] ?? String(campo.value);
+    await input.fill(valor);
+    if (campo.name === entidad.displayField) visible = valor;
+  }
+  return visible;
+}
+
+/** Va a la sección de una entidad por el menú. */
+export async function irA(page: Page, entidad: (typeof ENTITIES)[number]): Promise<void> {
+  await page.getByTestId(`nav-${entidad.plural}`).click();
+  await expect(page.getByRole("heading", { name: entidad.titlePlural })).toBeVisible();
+}
+
+/** Crea un registro por la interfaz y devuelve el texto con el que buscarlo. */
+export async function crearRegistro(
+  page: Page,
+  entidad: (typeof ENTITIES)[number],
+  sobrescribir: Record<string, string> = {},
+): Promise<string> {
+  const filas = await page.getByTestId("row").count();
+  await page.getByTestId(filas === 0 ? "new-first" : "new").click();
+  await expect(page.getByTestId("form")).toBeVisible();
+  const visible = await llenarFormulario(page, entidad, sobrescribir);
+  await page.getByTestId("save").click();
+  await expect(page.getByTestId("form")).toBeHidden();
+  return visible;
+}

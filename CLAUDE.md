@@ -70,6 +70,18 @@ Están parametrizadas por entidad, así que se adaptan solas al `spec.json`. Si 
 
 Los tests ponen `SKIP_SEED=1` para arrancar con la base vacía; `app/main.py` respeta esa variable.
 
+## Pruebas E2E en las apps generadas
+
+Las apps con web llevan Playwright en `frontend/tests/e2e/`, generado desde `templates/web_frontend/tests/e2e/`.
+
+Lo crítico: las pruebas localizan elementos por `data-testid`, y esos atributos viven en las plantillas del frontend (`App.tsx.j2`, `EntityPage.tsx.j2`, `Login.tsx.j2`, `Home.tsx.j2`). **Si quitas o renombras un `data-testid`, rompes las E2E.** `tests/test_e2e_generado.py` verifica que cada testid usado exista; córrelo después de tocar cualquier plantilla del frontend.
+
+Los prefijos interpolados (`nav-${e.plural}`, `field-${f.name}`, `stat-${e.plural}`) también están verificados.
+
+`_e2e_entities()` en `generator.py` da un valor válido por tipo de campo para llenar formularios. Si agregas un tipo en `spec.py`, agrégalo ahí también.
+
+Aislamiento: con login cada prueba registra un usuario nuevo y eso la aísla. Sin login todas comparten la base, así que `limpiar()` borra todo por la API en cada `beforeEach`, y un `globalSetup` borra el archivo SQLite antes de la corrida.
+
 ## Modo iteración
 
 `agent/iterate.py` cambia una app ya generada. El bucle: `ensure_git` → `llm.code_agent` (que es `claude -p` con herramientas, corriendo DENTRO del proyecto) → correr sus pruebas → si fallan, devolverle la salida y pedir arreglo (máx. 2) → commit.

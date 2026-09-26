@@ -1,0 +1,65 @@
+/** La app carga y se puede navegar. Si esto falla, nada más importa. */
+import { expect, test } from "@playwright/test";
+
+import { API, ENTITIES } from "./ayudas";
+{% if spec.needs_auth %}
+import { registrarse } from "./ayudas";
+{% else %}
+import { abrirApp } from "./ayudas";
+{% endif %}
+
+test("el backend responde", async ({ request }) => {
+  const res = await request.get(`${API}/api/health`);
+  expect(res.ok()).toBeTruthy();
+  expect((await res.json()).status).toBe("ok");
+});
+
+test("la página carga con el título de la app", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle(/{= spec.app_name | replace('/', '\\/') =}/);
+});
+{% if spec.needs_auth %}
+
+test("sin sesión se ve la pantalla de acceso, no la app", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("login-page")).toBeVisible();
+  await expect(page.getByTestId("app")).toHaveCount(0);
+});
+{% endif %}
+
+test("el menú lleva a todas las secciones", async ({ page }) => {
+{% if spec.needs_auth %}
+  await registrarse(page);
+{% else %}
+  await abrirApp(page);
+{% endif %}
+
+  for (const entidad of ENTITIES) {
+    await page.getByTestId(`nav-${entidad.plural}`).click();
+    await expect(page.getByRole("heading", { name: entidad.titlePlural })).toBeVisible();
+  }
+
+  await page.getByTestId("nav-home").click();
+  await expect(page.getByTestId(`stat-${ENTITIES[0].plural}`)).toBeVisible();
+});
+
+test("no hay errores de JavaScript al recorrer la app", async ({ page }) => {
+  const errores: string[] = [];
+  page.on("pageerror", (e) => errores.push(e.message));
+  page.on("console", (m) => {
+    // Los 401 esperados al cargar sin sesión no cuentan.
+    if (m.type() === "error" && !m.text().includes("401")) errores.push(m.text());
+  });
+
+{% if spec.needs_auth %}
+  await registrarse(page);
+{% else %}
+  await abrirApp(page);
+{% endif %}
+  for (const entidad of ENTITIES) {
+    await page.getByTestId(`nav-${entidad.plural}`).click();
+    await expect(page.getByRole("heading", { name: entidad.titlePlural })).toBeVisible();
+  }
+
+  expect(errores).toEqual([]);
+});

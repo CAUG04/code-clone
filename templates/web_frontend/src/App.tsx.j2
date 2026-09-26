@@ -28,22 +28,22 @@ export default function App() {
 {% endif %}
 
   return (
-    <div className="layout">
+    <div className="layout" data-testid="app">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div className="brand">
           <span className="brand-dot" />
           {APP.name}
         </div>
         <nav onClick={() => setMenuOpen(false)}>
-          <NavLink to="/" end>🏠 Inicio</NavLink>
+          <NavLink to="/" end data-testid="nav-home">🏠 Inicio</NavLink>
           {ENTITIES.map((e) => (
-            <NavLink key={e.plural} to={`/${e.plural}`}>
+            <NavLink key={e.plural} to={`/${e.plural}`} data-testid={`nav-${e.plural}`}>
               {e.titlePlural}
             </NavLink>
           ))}
         </nav>
 {% if spec.needs_auth %}
-        <button className="btn ghost logout" onClick={logout}>Cerrar sesión</button>
+        <button className="btn ghost logout" data-testid="logout" onClick={logout}>Cerrar sesión</button>
 {% endif %}
       </aside>
 

@@ -30,7 +30,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" data-testid="login-page">
       <div className="auth-hero">
         <h1>{APP.name}</h1>
         <p>{APP.tagline}</p>
@@ -40,22 +40,22 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         {mode === "register" && (
           <label>
             Nombre
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Tu nombre" />
+            <input data-testid="full-name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Tu nombre" />
           </label>
         )}
         <label>
           Correo
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" />
+          <input type="email" data-testid="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" />
         </label>
         <label>
           Contraseña
-          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+          <input type="password" data-testid="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
         </label>
-        {error && <div className="error">{error}</div>}
-        <button className="btn primary" disabled={loading}>
+        {error && <div className="error" data-testid="auth-error">{error}</div>}
+        <button className="btn primary" data-testid="submit" disabled={loading}>
           {loading ? "Un momento..." : mode === "login" ? "Entrar" : "Registrarme"}
         </button>
-        <button type="button" className="btn link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+        <button type="button" className="btn link" data-testid="toggle-mode" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
         </button>
         <p className="hint">Demo: demo@demo.com / demo1234</p>

@@ -141,14 +141,15 @@ export default function EntityPage() {
           <h1>{entity.titlePlural}</h1>
           <p className="muted">{entity.description}</p>
         </div>
-        <button className="btn primary" onClick={openNew}>+ Nuevo</button>
+        <button className="btn primary" data-testid="new" onClick={openNew}>+ Nuevo</button>
       </header>
 
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error" data-testid="error">{error}</div>}
 
       <div className="card">
         <input
           className="search"
+          data-testid="search"
           placeholder={`Buscar en ${entity.titlePlural.toLowerCase()}...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -157,9 +158,9 @@ export default function EntityPage() {
         {loading ? (
           <p className="muted">Cargando...</p>
         ) : filtered.length === 0 ? (
-          <div className="empty">
+          <div className="empty" data-testid="empty">
             <p>{items.length === 0 ? "Aún no hay registros." : "Sin resultados para tu búsqueda."}</p>
-            {items.length === 0 && <button className="btn primary" onClick={openNew}>Crear el primero</button>}
+            {items.length === 0 && <button className="btn primary" data-testid="new-first" onClick={openNew}>Crear el primero</button>}
           </div>
         ) : (
           <div className="table-wrap">
@@ -170,13 +171,13 @@ export default function EntityPage() {
                   <th />
                 </tr>
               </thead>
-              <tbody>
+              <tbody data-testid="rows">
                 {filtered.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={item.id} data-testid="row" data-id={item.id}>
                     {columns.map((c) => <td key={c.name}>{formatValue(c, item[c.name])}</td>)}
                     <td className="actions">
-                      <button className="btn ghost" onClick={() => openEdit(item)}>Editar</button>
-                      <button className="btn danger" onClick={() => remove(item)}>Eliminar</button>
+                      <button className="btn ghost" data-testid="edit" onClick={() => openEdit(item)}>Editar</button>
+                      <button className="btn danger" data-testid="delete" onClick={() => remove(item)}>Eliminar</button>
                     </td>
                   </tr>
                 ))}
@@ -188,7 +189,7 @@ export default function EntityPage() {
 
       {formOpen && (
         <div className="modal-backdrop" onClick={() => setFormOpen(false)}>
-          <form className="card modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+          <form className="card modal" data-testid="form" onClick={(e) => e.stopPropagation()} onSubmit={save}>
             <h2>{editing ? `Editar ${entity.title}` : `Nuevo ${entity.title}`}</h2>
             {entity.fields.map((f) => (
               <label key={f.name} className={f.type === "boolean" ? "check" : ""}>
@@ -196,6 +197,7 @@ export default function EntityPage() {
                   <>
                     <input
                       type="checkbox"
+                      data-testid={`field-${f.name}`}
                       checked={Boolean(values[f.name])}
                       onChange={(e) => setValues({ ...values, [f.name]: e.target.checked })}
                     />
@@ -210,6 +212,7 @@ export default function EntityPage() {
                     {f.type === "text" ? (
                       <textarea
                         rows={4}
+                        data-testid={`field-${f.name}`}
                         required={f.required}
                         value={String(values[f.name] ?? "")}
                         placeholder={f.description}
@@ -218,6 +221,7 @@ export default function EntityPage() {
                     ) : (
                       <input
                         type={inputType(f)}
+                        data-testid={`field-${f.name}`}
                         step={f.type === "float" ? "any" : undefined}
                         required={f.required}
                         value={String(values[f.name] ?? "")}
@@ -230,8 +234,8 @@ export default function EntityPage() {
               </label>
             ))}
             <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>Cancelar</button>
-              <button className="btn primary" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
+              <button type="button" className="btn ghost" data-testid="cancel" onClick={() => setFormOpen(false)}>Cancelar</button>
+              <button className="btn primary" data-testid="save" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
             </div>
           </form>
         </div>

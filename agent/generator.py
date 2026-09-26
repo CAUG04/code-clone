@@ -110,6 +110,43 @@ def _entities_meta(spec: AppSpec) -> list[dict]:
     ]
 
 
+def _e2e_entities(spec: AppSpec) -> list[dict]:
+    """Como _entities_meta, pero con un valor válido por campo.
+
+    Las pruebas E2E necesitan llenar formularios, así que cada campo lleva
+    un valor que el backend acepte para su tipo.
+    """
+    valores = {
+        "string": "Texto de prueba",
+        "text": "Descripción larga de prueba.",
+        "integer": 7,
+        "float": 12500.5,
+        "boolean": True,
+        "date": "2026-01-15",
+        "datetime": "2026-01-15T10:30",
+        "email": "prueba@ejemplo.com",
+        "url": "https://ejemplo.com/x",
+    }
+    return [
+        {
+            "plural": e.plural,
+            "title": e.title,
+            "titlePlural": e.title_plural,
+            "displayField": e.display_field,
+            "fields": [
+                {
+                    "name": f.name,
+                    "type": f.type,
+                    "required": f.required,
+                    "value": valores.get(f.type, "Texto de prueba"),
+                }
+                for f in e.fields
+            ],
+        }
+        for e in spec.entities
+    ]
+
+
 def _context(spec: AppSpec) -> dict:
     app_meta = {
         "name": spec.app_name,
@@ -123,6 +160,7 @@ def _context(spec: AppSpec) -> dict:
         "spec": spec,
         "entities_json": json.dumps(_entities_meta(spec), indent=2, ensure_ascii=False),
         "app_meta_json": json.dumps(app_meta, indent=2, ensure_ascii=False),
+        "e2e_entities_json": json.dumps(_e2e_entities(spec), indent=2, ensure_ascii=False),
     }
 
 
@@ -198,6 +236,7 @@ def _gitignore() -> str:
     return "\n".join([
         "# Python", "__pycache__/", "*.pyc", ".venv/", "venv/", "*.db", ".env",
         "", "# Node", "node_modules/", "dist/", ".expo/", "web-build/",
+        "", "# Playwright", "test-results/", "playwright-report/", "playwright/.cache/",
         "", "# SO", ".DS_Store", "",
     ])
 

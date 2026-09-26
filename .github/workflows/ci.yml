@@ -122,3 +122,62 @@ jobs:
           PY
       - working-directory: proyectos/gym-flow/backend
         run: pip install -r requirements.txt && pytest
+
+  e2e:
+    name: E2E con Playwright (${{ matrix.variante }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variante: [con-login, sin-login]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar el agente
+        run: pip install -r requirements.txt
+
+      - name: Generar la app
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from agent.interview import demo_spec
+          from agent.generator import generate_project
+          spec = demo_spec("web")
+          spec.needs_auth = "${{ matrix.variante }}" == "con-login"
+          generate_project(spec, Path("proyectos"), use_llm=False, overwrite=True)
+          PY
+
+      # Playwright arranca uvicorn por su cuenta, pero las dependencias
+      # tienen que estar instaladas antes.
+      - name: Dependencias del backend
+        working-directory: proyectos/gym-flow/backend
+        run: pip install -r requirements.txt
+
+      - name: Dependencias del frontend
+        working-directory: proyectos/gym-flow/frontend
+        run: npm install
+
+      - name: Instalar Chromium
+        working-directory: proyectos/gym-flow/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Correr las pruebas E2E
+        working-directory: proyectos/gym-flow/frontend
+        run: npm run test:e2e
+
+      - name: Guardar el reporte si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.variante }}
+          path: |
+            proyectos/gym-flow/frontend/playwright-report/
+            proyectos/gym-flow/frontend/test-results/
+          retention-days: 7

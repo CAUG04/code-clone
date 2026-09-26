@@ -70,6 +70,29 @@ Están parametrizadas sobre las listas de `conftest.py`, así que se adaptan sol
 **Nunca borres ni debilites una prueba para que pase.** Si falla una de seguridad, el bug está en el cambio, no en la prueba. Si una prueba quedó desactualizada por un cambio legítimo de comportamiento, actualízala para que refleje lo nuevo sin dejar de verificar lo que verificaba.
 
 Los tests corren con `SKIP_SEED=1` y su propia base SQLite temporal, así que no tocan tus datos.
+{% if spec.wants_web %}
+
+### Pruebas E2E (navegador real)
+
+```bash
+cd frontend
+npx playwright install chromium   # solo la primera vez
+npm run test:e2e                  # o test:e2e:ui para verlas correr
+```
+
+Playwright levanta el backend y el frontend solo, en los puertos 8001 y 4173, con la base `backend/e2e.db` aparte.
+
+Las pruebas encuentran los elementos por `data-testid`. **Si cambias un `data-testid` en `src/`, actualiza también `tests/e2e/`**, o las pruebas dejarán de encontrar el elemento. Los que hay:
+
+- Navegación: `nav-home`, `nav-<plural>`, `logout`, `app`
+- Lista: `new`, `new-first`, `search`, `rows`, `row`, `edit`, `delete`, `empty`, `error`
+- Formulario: `form`, `field-<campo>`, `save`, `cancel`
+{% if spec.needs_auth %}
+- Acceso: `login-page`, `email`, `password`, `full-name`, `submit`, `toggle-mode`, `auth-error`
+{% endif %}
+
+Si agregas un campo, `tests/e2e/ayudas.ts` tiene la lista `ENTITIES` con un valor de prueba por campo: agrégalo ahí o el formulario se llenará incompleto.
+{% endif %}
 
 ## Correrlo
 
