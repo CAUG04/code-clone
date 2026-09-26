@@ -1,10 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
 )
 
 from .database import Base
+
+
+def ahora() -> datetime:
+    """Momento actual en UTC, sin zona horaria.
+
+    No usamos datetime.utcnow(): está deprecado desde Python 3.12 y emite un
+    DeprecationWarning en cada inserción. Las columnas son DateTime sin zona,
+    así que devolvemos UTC "desnudo" para no cambiar lo que ya se guardaba.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 {% if spec.needs_auth %}
 
 
@@ -15,7 +25,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=ahora, nullable=False)
 {% endif %}
 {% for e in spec.entities %}
 
@@ -31,5 +41,5 @@ class {= e.name =}(Base):
 {% if spec.needs_auth %}
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
 {% endif %}
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=ahora, nullable=False)
 {% endfor %}

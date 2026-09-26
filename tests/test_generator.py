@@ -186,6 +186,33 @@ class TestDatosDeEjemplo:
         generate_project(spec_web, tmp_path, use_llm=False)
 
 
+class TestSinDeprecaciones:
+    """El código generado no debe usar APIs deprecadas.
+
+    `datetime.utcnow()` está deprecado desde Python 3.12 y emitía un
+    DeprecationWarning por cada inserción: 151 warnings en una corrida.
+    """
+
+    def test_no_se_usa_datetime_utcnow(self, tmp_path, spec_both):
+        p = generate_project(spec_both, tmp_path, use_llm=False)
+        for archivo in [f for f in _archivos(p) if f.suffix == ".py"]:
+            arbol = ast.parse(archivo.read_text(encoding="utf-8"))
+            usos = [
+                n for n in ast.walk(arbol)
+                if isinstance(n, ast.Attribute) and n.attr == "utcnow"
+            ]
+            assert not usos, f"{archivo.relative_to(p)} usa datetime.utcnow()"
+
+    def test_created_at_usa_el_helper_de_zona_consciente(self, tmp_path, spec_both):
+        p = generate_project(spec_both, tmp_path, use_llm=False)
+        modelos = (p / "backend/app/models.py").read_text()
+        assert "def ahora()" in modelos
+        assert "datetime.now(timezone.utc)" in modelos
+        assert "default=ahora" in modelos
+        # Sigue siendo naive: cambiarlo alteraría lo que ya se guarda.
+        assert "replace(tzinfo=None)" in modelos
+
+
 class TestPostgres:
     def test_la_url_de_postgres_se_normaliza(self, tmp_path, spec_web):
         """Render y Railway entregan 'postgres://', que rompería psycopg 3."""
