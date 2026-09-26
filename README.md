@@ -71,6 +71,32 @@ python cli.py --out ~/mis-apps             # otra carpeta de salida
 
 Los proyectos se crean en `./proyectos/<nombre-de-la-app>/`, cada uno con su propio README explicando cómo correrlo.
 
+## Modo iteración: cambiar una app ya generada
+
+No hay que regenerar nada. Le dices el cambio en lenguaje natural y edita el código existente:
+
+```bash
+python cli.py --iterate proyectos/gym-flow "agrega un campo de notas a los planes"
+python cli.py --iterate proyectos/gym-flow "ordena las asistencias por fecha, más reciente primero"
+python cli.py --history proyectos/gym-flow      # ver las iteraciones
+python cli.py --revert proyectos/gym-flow       # deshacer la última
+```
+
+Desde el celular es igual: en la web aparecen tus apps y tocas una para cambiarla.
+
+### Cómo funciona
+
+El trabajo de editar archivos lo hace **Claude Code**, que ya tiene herramientas de lectura y edición y su propio bucle de agente. Lo que aporta code-clone es lo que le falta:
+
+1. **Contexto.** Cada app generada lleva su propio `CLAUDE.md` con dónde está cada cosa y qué capas hay que tocar al agregar un campo (modelo, esquema, datos de prueba, metadatos del frontend, y `spec.json` como fuente de verdad).
+2. **Las pruebas como red de seguridad.** Tras el cambio se corre la suite del proyecto. Si se rompió, se le devuelve la salida de pytest y se le pide que lo arregle, hasta 2 intentos. Sin este paso el agente *cree* que funcionó; con él hay una señal objetiva.
+3. **Un commit por iteración**, así que `--revert` siempre funciona. Si las pruebas quedan en rojo, el commit se marca con `[pruebas en rojo]` en vez de ocultarlo.
+4. **Límites.** Claude solo recibe herramientas de lectura, edición y correr pytest. No puede instalar paquetes, tocar la red ni borrar archivos.
+
+Las instrucciones dicen explícitamente que no debilite ni borre pruebas para que pasen: si una de seguridad falla, el bug está en el cambio.
+
+Para que las pruebas corran hace falta tener instaladas las dependencias del proyecto (`cd backend && pip install -r requirements.txt`). Si no están, el cambio se hace igual y se avisa que no se pudo verificar.
+
 ## Uso desde el celular (web en tu PC)
 
 ```bash
@@ -138,11 +164,12 @@ pip install pytest
 pytest
 ```
 
-86 pruebas, en `tests/`:
+130 pruebas, en `tests/`:
 
 - **`test_spec.py`** — normalización de nombres (tildes, ñ, símbolos, plurales), palabras reservadas de Python, nombres que chocan con los internos, tipos de campo completos, colores inválidos, ida y vuelta por JSON.
 - **`test_generator.py`** — que solo se generen las carpetas de la plataforma pedida, que **todo el Python generado compile**, que no queden restos de plantilla Jinja, que los JSON sean válidos, que con y sin login se genere lo correcto, y que los datos de ejemplo respeten cada tipo de campo.
-- **`test_web.py`** — levanta el servidor de verdad en un puerto libre: flujo completo de la entrevista con el modelo simulado, y **seguridad del servidor**: sin token no responde nada, tokens equivocados, intentos de leer archivos del servidor (`../../etc/passwd`, `/.env`, `/agent/llm.py`), JSON roto, y que las credenciales del entorno no se filtren a la página.
+- **`test_iterate.py`** — la máquina de estados del modo iteración con el modelo simulado: el bucle de reparación (que reintente, que le pase la salida de pytest, que se rinda tras el máximo), que el commit quede marcado cuando las pruebas fallan, el revert, y que las herramientas permitidas no incluyan Bash libre ni instalación de paquetes.
+- **`test_web.py`** y **`test_web_iterate.py`** — levantan el servidor de verdad en un puerto libre: flujo completo de la entrevista con el modelo simulado, y **seguridad del servidor**: sin token no responde nada, tokens equivocados, intentos de leer archivos del servidor (`../../etc/passwd`, `/.env`, `/agent/llm.py`), JSON roto, que las credenciales del entorno no se filtren a la página, y que el nombre de proyecto que llega del navegador no pueda apuntar fuera de la carpeta de salida.
 
 Las pruebas nunca llaman al modelo de verdad: el fixture `fake_llm` lo reemplaza, así que son rápidas, gratis y deterministas.
 
@@ -167,11 +194,14 @@ agent/
   llm.py                Backends del modelo (Claude Code local o API) + parseo de JSON
   spec.py               AppSpec: el "contrato" entre la entrevista y el generador
   generator.py          Renderiza plantillas, datos de ejemplo, CI
+  iterate.py            Modo iteración: editar, probar, arreglar, commitear
+  ui.py                 Consola con rich si está, sin él si no
   github_publish.py     git init/commit + crear repo + push
 web/
   server.py             Servidor HTTP (solo librería estándar)
   static/index.html     La interfaz de chat, pensada para celular
 templates/
+  project_claude.md.j2  El CLAUDE.md que va DENTRO de cada app generada
   web_backend/          FastAPI + pruebas (un router por entidad vía __entity__.py.j2)
   web_frontend/         React + Vite + TS
   mobile/               Expo / React Native

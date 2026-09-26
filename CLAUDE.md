@@ -70,6 +70,15 @@ Están parametrizadas por entidad, así que se adaptan solas al `spec.json`. Si 
 
 Los tests ponen `SKIP_SEED=1` para arrancar con la base vacía; `app/main.py` respeta esa variable.
 
+## Modo iteración
+
+`agent/iterate.py` cambia una app ya generada. El bucle: `ensure_git` → `llm.code_agent` (que es `claude -p` con herramientas, corriendo DENTRO del proyecto) → correr sus pruebas → si fallan, devolverle la salida y pedir arreglo (máx. 2) → commit.
+
+- Cada app generada lleva su `CLAUDE.md` (de `templates/project_claude.md.j2`). Ahí vive el conocimiento de qué capas tocar; si agregas una capa al generador, actualiza también esa plantilla.
+- `llm.CODE_TOOLS` limita lo que puede hacer: leer, editar y correr pytest. Nada de red ni instalaciones. Hay pruebas que lo verifican.
+- `changes()` hace `git add -A` antes de mirar el diff, porque `git diff HEAD` ignora los archivos nuevos y el modelo los crea a menudo.
+- Aunque las pruebas queden en rojo se commitea, marcado con `[pruebas en rojo]`, para que `--revert` siempre tenga a dónde volver.
+
 ## La web para celular
 
 `python serve.py` levanta un servidor con **solo librería estándar** (sin FastAPI) y lo abres desde el celular. Vive en `web/`:

@@ -12,8 +12,15 @@ from agent.spec import AppSpec
 RESTOS_JINJA = re.compile(r"\{=|=\}|\{%|%\}|__entity__")
 
 
+IGNORAR = {".git", "node_modules", "__pycache__", ".venv"}
+
+
 def _archivos(proyecto):
-    return [p for p in proyecto.rglob("*") if p.is_file()]
+    """Archivos del proyecto, sin los internos de git ni las dependencias."""
+    return [
+        p for p in proyecto.rglob("*")
+        if p.is_file() and not IGNORAR & set(p.relative_to(proyecto).parts)
+    ]
 
 
 class TestEstructura:
@@ -59,7 +66,7 @@ class TestEstructura:
 class TestCodigoValido:
     def test_todo_el_python_generado_compila(self, tmp_path, spec_both):
         p = generate_project(spec_both, tmp_path, use_llm=False)
-        archivos = list(p.rglob("*.py"))
+        archivos = [f for f in _archivos(p) if f.suffix == ".py"]
         assert len(archivos) > 5, "se generaron muy pocos archivos Python"
         for f in archivos:
             try:
@@ -79,7 +86,7 @@ class TestCodigoValido:
 
     def test_los_json_generados_son_validos(self, tmp_path, spec_both):
         p = generate_project(spec_both, tmp_path, use_llm=False)
-        for f in p.rglob("*.json"):
+        for f in [x for x in _archivos(p) if x.suffix == ".json"]:
             json.loads(f.read_text(encoding="utf-8"))  # lanza si está mal
 
     def test_no_hay_archivos_vacios(self, tmp_path, spec_both):

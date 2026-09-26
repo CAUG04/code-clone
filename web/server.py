@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from agent import iterate as it
 from agent import llm
 from agent.generator import generate_project
 from agent.github_publish import (
@@ -175,6 +176,63 @@ def build_project(sess: dict, out_root: Path, do_publish: bool, private: bool, n
 
 
 # ---------------------------------------------------------------------------
+# Modo iteración
+# ---------------------------------------------------------------------------
+
+def list_projects(out_root: Path) -> list[dict]:
+    """Proyectos generados que se pueden modificar."""
+    proyectos = []
+    for carpeta in sorted(out_root.iterdir() if out_root.is_dir() else []):
+        spec_file = carpeta / "spec.json"
+        if not spec_file.is_file():
+            continue
+        try:
+            datos = json.loads(spec_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        proyectos.append({
+            "slug": carpeta.name,
+            "name": datos.get("app_name", carpeta.name),
+            "tagline": datos.get("tagline", ""),
+            "platform": datos.get("platform", "web"),
+            "entities": [e.get("name") for e in datos.get("entities", [])],
+            "history": it.history(carpeta, limit=6),
+        })
+    return proyectos
+
+
+def _project_path(out_root: Path, slug: str) -> Path:
+    """Resuelve el slug dentro de out_root, sin dejar salir de ahí."""
+    destino = (out_root / slug).resolve()
+    raiz = out_root.resolve()
+    if destino == raiz or raiz not in destino.parents:
+        raise KeyError("Ese proyecto no existe")
+    if not (destino / "spec.json").is_file():
+        raise KeyError("Ese proyecto no existe")
+    return destino
+
+
+def run_iteration(project: Path, instruction: str, with_tests: bool, note) -> dict:
+    resultado = it.iterate(project, instruction, note=note, with_tests=with_tests)
+    return {
+        "kind": "iterated",
+        "ok": resultado.ok,
+        "summary": resultado.summary,
+        "files_changed": resultado.files_changed,
+        "diff_stat": resultado.diff_stat,
+        "tests_ran": resultado.tests_ran,
+        "tests_passed": resultado.tests_passed,
+        "test_output": resultado.test_output[-4000:] if resultado.test_output else "",
+        "repairs": resultado.repairs,
+        "commit": resultado.commit,
+        "error": resultado.error,
+        "skipped_tests_reason": resultado.skipped_tests_reason,
+        "slug": project.name,
+        "history": it.history(project, limit=6),
+    }
+
+
+# ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
 
@@ -246,6 +304,10 @@ class Handler(BaseHTTPRequestHandler):
                 "github": publishing_description(),
                 "github_ready": publishing_method() is not None,
             })
+            return
+
+        if path == "/api/projects":
+            self._json({"projects": list_projects(self.out_root)})
             return
 
         if path.startswith("/api/job/"):
@@ -331,6 +393,30 @@ class Handler(BaseHTTPRequestHandler):
                     "Escribiendo el código...",
                 )
                 self._json({"job_id": job})
+                return
+
+            if path == "/api/iterate":
+                project = _project_path(self.out_root, str(body.get("slug") or ""))
+                instruccion = (body.get("instruction") or "").strip()
+                if not instruccion:
+                    self._error(400, "Dime qué quieres cambiar")
+                    return
+                con_pruebas = bool(body.get("with_tests", True))
+                job = start_job(
+                    lambda note: run_iteration(project, instruccion, con_pruebas, note),
+                    "Leyendo el proyecto...",
+                )
+                self._json({"job_id": job})
+                return
+
+            if path == "/api/revert":
+                project = _project_path(self.out_root, str(body.get("slug") or ""))
+                try:
+                    mensaje = it.revert_last(project)
+                except RuntimeError as exc:
+                    self._error(400, str(exc))
+                    return
+                self._json({"reverted": mensaje, "history": it.history(project, limit=6)})
                 return
 
             if path == "/api/demo":

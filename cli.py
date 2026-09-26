@@ -62,6 +62,16 @@ def parse_args() -> argparse.Namespace:
         "--platform", choices=["web", "mobile", "both"],
         help="Plataforma, para no tener que elegirla en la entrevista",
     )
+
+    g = p.add_argument_group("modo iteración (cambiar una app ya generada)")
+    g.add_argument(
+        "--iterate", type=Path, metavar="CARPETA",
+        help='Proyecto a modificar. Ej: --iterate proyectos/gym-flow "agrega paginación"',
+    )
+    g.add_argument("instruction", nargs="?", help="Qué cambiar, en lenguaje natural")
+    g.add_argument("--revert", type=Path, metavar="CARPETA", help="Deshacer la última iteración")
+    g.add_argument("--history", type=Path, metavar="CARPETA", help="Ver las iteraciones de un proyecto")
+    g.add_argument("--skip-tests", action="store_true", help="No correr las pruebas tras el cambio")
     return p.parse_args()
 
 
@@ -167,9 +177,98 @@ def next_steps(project: Path, spec: AppSpec) -> str:
     return "\n".join(lines)
 
 
+def do_iterate(args: argparse.Namespace) -> None:
+    from agent import iterate as it
+
+    project = args.iterate.resolve()
+    instruccion = (args.instruction or "").strip()
+
+    if not instruccion:
+        if not interactive():
+            console.print(
+                "[red]Falta decir qué cambiar.[/red]\n"
+                f'  python cli.py --iterate {args.iterate} "agrega paginación a la lista"'
+            )
+            sys.exit(2)
+        instruccion = (questionary.text(
+            f"¿Qué quieres cambiar en {project.name}?"
+        ).ask() or "").strip()
+        if not instruccion:
+            console.print("Cancelado.")
+            sys.exit(1)
+
+    console.print(f"[dim]Motor: {llm.backend_description()}[/dim]")
+    console.print(f"[magenta]Modificando[/magenta] [bold]{project.name}[/bold]: {instruccion}\n")
+
+    estado = {"actual": None}
+
+    def note(mensaje: str) -> None:
+        if estado["actual"] is not None:
+            console.print(f"  [dim]✓ {estado['actual']}[/dim]")
+        estado["actual"] = mensaje
+        console.print(f"  [magenta]→[/magenta] {mensaje}")
+
+    resultado = it.iterate(
+        project, instruccion, note=note, with_tests=not args.skip_tests
+    )
+
+    console.print()
+    if resultado.error and not resultado.files_changed:
+        console.print(f"[red]{resultado.error}[/red]")
+        sys.exit(1)
+
+    borde = "green" if resultado.ok else "yellow"
+    console.print(Panel(it.describe(resultado), title="Resultado", border_style=borde))
+
+    if resultado.tests_ran and not resultado.tests_passed:
+        console.print("\n[bold]Salida de las pruebas:[/bold]")
+        console.print(resultado.test_output[-3000:])
+        console.print(
+            f"\nPara deshacerlo: [bold]python cli.py --revert {args.iterate}[/bold]"
+        )
+        sys.exit(1)
+
+
+def do_revert(args: argparse.Namespace) -> None:
+    from agent import iterate as it
+
+    project = args.revert.resolve()
+    try:
+        mensaje = it.revert_last(project)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
+    console.print(f"[green]✓ Deshecho:[/green] {mensaje}")
+
+
+def do_history(args: argparse.Namespace) -> None:
+    from agent import iterate as it
+
+    project = args.history.resolve()
+    entradas = it.history(project)
+    if not entradas:
+        console.print(f"{project.name} no tiene historial de git.")
+        return
+    console.print(f"[bold]Iteraciones de {project.name}[/bold]\n")
+    for e in entradas:
+        console.print(f"  [dim]{e['sha']}[/dim]  {e['mensaje']}  [dim]({e['cuando']})[/dim]")
+
+
 def main() -> None:
     args = parse_args()
     console.print(BANNER)
+
+    if args.revert:
+        do_revert(args)
+        return
+
+    if args.history:
+        do_history(args)
+        return
+
+    if args.iterate:
+        do_iterate(args)
+        return
 
     if args.publish_only:
         project = args.publish_only.resolve()

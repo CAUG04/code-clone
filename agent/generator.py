@@ -453,6 +453,15 @@ def generate_project(spec: AppSpec, out_root: Path, *, use_llm: bool = True, ove
         with console.status("[magenta]Escribiendo la app móvil (Expo)...[/magenta]"):
             render_tree(TEMPLATES / "mobile", project / "mobile", ctx)
 
+    # CLAUDE.md del proyecto: es lo que le permite al modo iteración entender
+    # la arquitectura sin tener que redescubrirla en cada cambio.
+    plantilla_claude = TEMPLATES / "project_claude.md.j2"
+    if plantilla_claude.exists():
+        (project / "CLAUDE.md").write_text(
+            _env().from_string(plantilla_claude.read_text(encoding="utf-8")).render(**ctx),
+            encoding="utf-8",
+        )
+
     (project / ".gitignore").write_text(_gitignore(), encoding="utf-8")
     (project / "docker-compose.yml").write_text(_docker_compose(spec), encoding="utf-8")
     workflows = project / ".github" / "workflows"
@@ -461,4 +470,19 @@ def generate_project(spec: AppSpec, out_root: Path, *, use_llm: bool = True, ove
     (project / "README.md").write_text(_readme(spec), encoding="utf-8")
     (project / "spec.json").write_text(spec.to_json(), encoding="utf-8")
 
+    # Commit inicial: le da al modo iteración un punto al que revertir.
+    _commit_inicial(project)
+
     return project
+
+
+def _commit_inicial(project: Path) -> None:
+    """Deja el proyecto en git con todo commiteado. Si git falla, no importa."""
+    if shutil.which("git") is None:
+        return
+    try:
+        from .iterate import ensure_git
+
+        ensure_git(project, "Proyecto generado por code-clone")
+    except Exception as exc:  # noqa: BLE001 - git es un extra, no un requisito
+        console.print(f"[dim]No pude inicializar git en el proyecto: {exc}[/dim]")

@@ -1,0 +1,94 @@
+# Instrucciones para Claude en este proyecto
+
+**{= spec.app_name =}** — {= spec.tagline =}
+
+Generado por code-clone. `spec.json` en la raíz describe el modelo de datos y es la **fuente de verdad**: si cambias entidades o campos, actualízalo también o el proyecto queda inconsistente.
+
+## Dónde está cada cosa
+
+```
+backend/app/models.py      Tablas SQLAlchemy (una clase por entidad)
+backend/app/schemas.py     Esquemas Pydantic: <Entidad>Base / Create / Read
+backend/app/routers/       Un archivo por entidad, con su CRUD
+backend/app/database.py    Motor y sesión. SQLite en local, Postgres con Docker
+{% if spec.needs_auth %}
+backend/app/auth.py        Registro, login y JWT
+{% endif %}
+backend/app/main.py        Arma la app, monta los routers, carga datos de ejemplo
+backend/app/seed.json      Datos de ejemplo del primer arranque
+backend/tests/             Pruebas de API y de seguridad
+{% if spec.wants_web %}
+frontend/src/entities.ts   Metadatos de las entidades: la interfaz se construye sola desde aquí
+frontend/src/api.ts        Cliente HTTP y manejo del token
+frontend/src/pages/        EntityPage es genérica y sirve para todas las entidades
+{% endif %}
+{% if spec.wants_mobile %}
+mobile/src/entities.js     Metadatos de las entidades para la app móvil
+mobile/src/screens/        EntityScreen es genérica y sirve para todas las entidades
+{% endif %}
+```
+
+## Agregar o cambiar un campo
+
+Hay que tocarlo en varias capas. Si te salta una, las pruebas lo detectan:
+
+1. `spec.json` — la entidad y su campo
+2. `backend/app/models.py` — la columna
+3. `backend/app/schemas.py` — en la clase `<Entidad>Base`
+4. `backend/tests/conftest.py` — el diccionario `PAYLOADS` (y `REQUIRED_FIELDS` si es obligatorio)
+{% if spec.wants_web %}
+5. `frontend/src/entities.ts` — el arreglo `fields` de esa entidad
+{% endif %}
+{% if spec.wants_mobile %}
+{= '6' if spec.wants_web else '5' =}. `mobile/src/entities.js` — el arreglo `fields` de esa entidad
+{% endif %}
+
+Los tipos válidos son: `string`, `text`, `integer`, `float`, `boolean`, `date`, `datetime`, `email`, `url`. Tienen que coincidir entre el modelo, el esquema y los metadatos del frontend.
+
+No hay migraciones: las tablas se crean con `Base.metadata.create_all` al arrancar. Si cambias columnas en desarrollo, borra `backend/app.db` y vuelve a arrancar.
+
+## Agregar una entidad nueva
+
+Copia el patrón de una existente: modelo en `models.py`, los tres esquemas en `schemas.py`, un archivo nuevo en `routers/` (copia uno y renombra), monta el router en `main.py`, agrégala a `SEED_MODELS`, a `PAYLOADS` y `REQUIRED_FIELDS` en `conftest.py`, al `ENTITIES` de los metadatos del frontend, y a `spec.json`.
+{% if spec.needs_auth %}
+Toda entidad lleva `owner_id` con `ForeignKey("users.id")`, y su router filtra por el usuario actual. **Eso no es opcional**: es lo que impide que un usuario vea los datos de otro, y hay pruebas de seguridad que lo verifican.
+{% endif %}
+
+## Pruebas
+
+```bash
+cd backend
+pip install -r requirements.txt   # solo la primera vez
+pytest
+```
+
+- `tests/test_api.py` — CRUD de cada entidad, validación, 404s, orden de la lista.
+- `tests/test_security.py` — {% if spec.needs_auth %}autenticación obligatoria, tokens inválidos y expirados, **aislamiento entre usuarios**, contraseñas con hash y sal, {% endif %}inyección SQL y entradas maliciosas.
+
+Están parametrizadas sobre las listas de `conftest.py`, así que se adaptan solas cuando agregas entidades o campos ahí.
+
+**Nunca borres ni debilites una prueba para que pase.** Si falla una de seguridad, el bug está en el cambio, no en la prueba. Si una prueba quedó desactualizada por un cambio legítimo de comportamiento, actualízala para que refleje lo nuevo sin dejar de verificar lo que verificaba.
+
+Los tests corren con `SKIP_SEED=1` y su propia base SQLite temporal, así que no tocan tus datos.
+
+## Correrlo
+
+```bash
+docker compose up --build        # todo junto, con Postgres
+```
+
+O por partes:
+
+```bash
+cd backend && uvicorn app.main:app --reload     # http://localhost:8000/docs
+{% if spec.wants_web %}
+cd frontend && npm run dev                      # http://localhost:5173
+{% endif %}
+{% if spec.wants_mobile %}
+cd mobile && npx expo start                     # escanea el QR con Expo Go
+{% endif %}
+```
+{% if spec.needs_auth %}
+
+Usuario de prueba: `demo@demo.com` / `demo1234`
+{% endif %}

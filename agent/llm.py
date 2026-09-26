@@ -16,12 +16,25 @@ import re
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 from typing import Any
 
 # El modelo a usar. Con el backend "cli" acepta alias ("sonnet", "opus").
 DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "")
 # Tiempo máximo por llamada al CLI (segundos).
 CLI_TIMEOUT = int(os.environ.get("CLAUDE_CLI_TIMEOUT", "300"))
+# Editar código toma más que responder una pregunta.
+CODE_TIMEOUT = int(os.environ.get("CLAUDE_CODE_TIMEOUT", "900"))
+
+# Herramientas que le permitimos a Claude Code al editar un proyecto.
+# Bash queda limitado a comandos de lectura y a correr las pruebas: no
+# queremos que instale cosas ni toque la red por su cuenta.
+CODE_TOOLS = [
+    "Read", "Edit", "Write", "Glob", "Grep",
+    "Bash(pytest*)", "Bash(python -m pytest*)",
+    "Bash(ls*)", "Bash(cat*)", "Bash(head*)", "Bash(tail*)",
+    "Bash(git diff*)", "Bash(git status*)",
+]
 
 JSON_RULE = (
     "\n\nIMPORTANTE: responde ÚNICAMENTE con JSON válido, sin texto adicional "
@@ -159,6 +172,60 @@ def _cli_call(system: str, user: str, schema: dict | None = None) -> tuple[str, 
         return _parse_cli_output(res.stdout)
 
     raise LLMError("No pude ejecutar Claude Code después de varios intentos.")
+
+
+def code_agent(
+    prompt: str,
+    cwd: Path,
+    *,
+    append_system: str | None = None,
+    allowed_tools: list[str] | None = None,
+    timeout: int | None = None,
+) -> str:
+    """Le pide a Claude Code que edite archivos dentro de `cwd`.
+
+    A diferencia de `ask()`, aquí NO reemplazamos el system prompt: queremos
+    que Claude Code conserve sus instrucciones de uso de herramientas. Solo
+    le agregamos contexto con --append-system-prompt.
+
+    Corre dentro del proyecto, así que también carga el CLAUDE.md que el
+    generador dejó ahí.
+    """
+    exe = claude_cli_path()
+    if not exe:
+        raise LLMNotConfigured(
+            "Editar código necesita el comando `claude`. Instálalo con:\n"
+            "    npm install -g @anthropic-ai/claude-code"
+        )
+
+    tools = allowed_tools if allowed_tools is not None else CODE_TOOLS
+    cmd = [
+        exe, "-p", prompt,
+        "--output-format", "json",
+        "--permission-mode", "acceptEdits",
+        "--allowedTools", ",".join(tools),
+    ]
+    if DEFAULT_MODEL:
+        cmd += ["--model", DEFAULT_MODEL]
+    if append_system:
+        cmd += ["--append-system-prompt", append_system]
+
+    try:
+        res = subprocess.run(
+            cmd, cwd=str(cwd), capture_output=True, text=True,
+            timeout=timeout or CODE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise LLMError(
+            f"Claude Code no terminó de editar en {timeout or CODE_TIMEOUT}s. "
+            "Puedes subir el límite con CLAUDE_CODE_TIMEOUT."
+        )
+
+    if res.returncode != 0:
+        raise LLMError(_cli_error_message((res.stderr or res.stdout or "").strip()))
+
+    text, _ = _parse_cli_output(res.stdout)
+    return text
 
 
 def _is_unknown_option(stderr: str) -> bool:

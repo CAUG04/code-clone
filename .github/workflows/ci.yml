@@ -50,6 +50,26 @@ jobs:
       - name: Las pruebas también corren sin ellas
         run: pytest tests/test_spec.py tests/test_generator.py
 
+  iteracion:
+    name: El modo iteración conserva git y el CLAUDE.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - name: Generar una app y revisar que quede lista para iterar
+        run: |
+          python cli.py --demo --platform web --yes --no-github
+          test -f proyectos/gym-flow/CLAUDE.md
+          test -d proyectos/gym-flow/.git
+          git -C proyectos/gym-flow log --oneline
+          test -z "$(git -C proyectos/gym-flow status --porcelain)"
+      - name: Pruebas del modo iteración
+        run: pytest tests/test_iterate.py tests/test_web_iterate.py
+
   app_generada:
     name: Las pruebas de la app generada pasan
     runs-on: ubuntu-latest

@@ -204,7 +204,28 @@ async function boot() {
   askIdea();
 }
 
-function askIdea() {
+async function askIdea() {
+  // Si ya hay apps generadas, ofrecer cambiarlas además de crear una nueva.
+  let proyectos = [];
+  try {
+    proyectos = (await api("/api/projects")).projects || [];
+  } catch (e) { /* sin proyectos, seguimos */ }
+
+  if (proyectos.length) {
+    const lista = agent(`<p class="q">Tus apps</p><p class="muted">Toca una para cambiarla, o crea una nueva abajo.</p>`);
+    proyectos.forEach((p) => {
+      const card = el("div", "ent");
+      card.style.cursor = "pointer";
+      const plat = { web: "🌐", mobile: "📱", both: "🌐📱" }[p.platform] || "";
+      card.innerHTML = `<h3>${plat} ${esc(p.name)}</h3>
+        <p class="muted" style="font-size:13px;margin:0 0 4px">${esc(p.tagline)}</p>
+        <p class="muted" style="font-size:12px;margin:0">${p.entities.map(esc).join(" · ")}</p>
+        ${p.history.length ? `<p class="muted" style="font-size:11px;margin:6px 0 0">${p.history.length} cambio(s) · último ${esc(p.history[0].cuando)}</p>` : ""}`;
+      card.onclick = () => askChange(p);
+      lista.appendChild(card);
+    });
+  }
+
   const box = agent(`
     <p class="q">¿Qué quieres construir hoy?</p>
     <p class="muted">Descríbelo con tus palabras, como se lo contarías a un amigo.</p>
@@ -260,6 +281,94 @@ function handle(payload) {
   if (payload.kind === "questions") return showQuestions(payload);
   if (payload.kind === "plan") return showPlan(payload.spec);
   if (payload.kind === "built") return showBuilt(payload);
+  if (payload.kind === "iterated") return showIterated(payload);
+}
+
+// ---------- modo iteración ----------
+
+function askChange(proyecto) {
+  const box = agent(`
+    <p class="q">Cambiar ${esc(proyecto.name)}</p>
+    <p class="muted">Dime qué quieres que cambie, con tus palabras.</p>
+    <label class="field">
+      <textarea id="instr" placeholder="Agrega un campo de notas a los planes&#10;Ordena la lista por fecha, más reciente primero&#10;Agrega un botón para exportar a CSV"></textarea>
+    </label>
+    <div class="chips" style="margin-top:4px">
+      <button class="chip on" id="t-si">Correr las pruebas</button>
+      <button class="chip" id="t-no">Sin pruebas (más rápido)</button>
+    </div>
+    <button class="btn primary" style="margin-top:14px" id="go">Hacer el cambio</button>
+    ${proyecto.history && proyecto.history.length > 1
+      ? `<button class="btn ghost" style="margin-top:8px" id="undo">Deshacer el último cambio</button>` : ""}
+    <button class="btn ghost" style="margin-top:8px" id="back">Volver</button>
+  `);
+
+  let conPruebas = true;
+  const chips = box.querySelectorAll(".chip");
+  box.querySelector("#t-si").onclick = () => { conPruebas = true; chips.forEach(c=>c.classList.remove("on")); box.querySelector("#t-si").classList.add("on"); };
+  box.querySelector("#t-no").onclick = () => { conPruebas = false; chips.forEach(c=>c.classList.remove("on")); box.querySelector("#t-no").classList.add("on"); };
+
+  box.querySelector("#go").onclick = async () => {
+    const instruction = box.querySelector("#instr").value.trim();
+    if (!instruction) { box.querySelector("#instr").focus(); return; }
+    box.querySelectorAll("button, textarea").forEach((b) => (b.disabled = true));
+    me(instruction);
+    try {
+      const r = await api("/api/iterate", { slug: proyecto.slug, instruction, with_tests: conPruebas });
+      handle(await runJob(r.job_id));
+    } catch (e) { fail(e.message); }
+  };
+
+  const undo = box.querySelector("#undo");
+  if (undo) undo.onclick = async () => {
+    box.querySelectorAll("button, textarea").forEach((b) => (b.disabled = true));
+    me("Deshaz el último cambio");
+    try {
+      const r = await api("/api/revert", { slug: proyecto.slug });
+      const actualizado = { ...proyecto, history: r.history };
+      agent(`<p><span class="ok">✓ Deshecho:</span> ${esc(r.reverted)}</p>`);
+      askChange(actualizado);
+    } catch (e) { fail(e.message); }
+  };
+
+  box.querySelector("#back").onclick = () => { box.remove(); askIdea(); };
+}
+
+function showIterated(r) {
+  const estado = r.ok
+    ? '<span class="ok">✓ Listo.</span>'
+    : (r.tests_ran && !r.tests_passed ? '<span style="color:var(--danger);font-weight:700">⚠ Cambio hecho, pruebas en rojo.</span>' : '<span class="ok">✓ Hecho.</span>');
+
+  let html = `<p>${estado}</p>`;
+  if (r.summary) html += `<p style="margin-top:8px">${esc(r.summary)}</p>`;
+
+  if (r.files_changed && r.files_changed.length) {
+    html += `<p class="muted" style="margin-top:12px">Archivos tocados (${r.files_changed.length}):</p>`;
+    html += `<pre>${r.files_changed.map(esc).join("\n")}</pre>`;
+  }
+
+  if (!r.tests_ran) {
+    html += `<p class="muted" style="margin-top:10px">Pruebas: no se corrieron${r.skipped_tests_reason ? " — " + esc(r.skipped_tests_reason) : ""}.</p>`;
+  } else if (r.tests_passed) {
+    const arreglos = r.repairs ? ` (tras ${r.repairs} arreglo automático)` : "";
+    html += `<p style="margin-top:10px">Pruebas: <b class="ok">pasan</b>${arreglos}.</p>`;
+  } else {
+    html += `<p style="margin-top:10px" class="muted">Pruebas: <b style="color:var(--danger)">fallan</b>. El cambio quedó guardado y marcado, puedes deshacerlo.</p>`;
+    if (r.test_output) html += `<pre>${esc(r.test_output.slice(-1500))}</pre>`;
+  }
+
+  if (r.error) html += `<p class="muted" style="margin-top:10px">${esc(r.error)}</p>`;
+
+  const box = agent(html);
+  const otra = el("button", "btn primary", "Hacer otro cambio");
+  otra.style.marginTop = "14px";
+  otra.onclick = () => askChange({ slug: r.slug, name: r.slug, tagline: "", platform: "web", entities: [], history: r.history || [] });
+  box.appendChild(otra);
+
+  const inicio = el("button", "btn ghost", "Volver al inicio");
+  inicio.style.marginTop = "8px";
+  inicio.onclick = () => askIdea();
+  box.appendChild(inicio);
 }
 
 // ---------- preguntas ----------
@@ -462,8 +571,16 @@ npx expo start</pre>`;
   html += `<p class="muted" style="margin-top:10px">El README dentro del proyecto tiene el detalle completo.</p>`;
 
   const box = agent(html);
+
+  const cambiar = el("button", "btn primary", "Cambiar algo de esta app");
+  cambiar.style.marginTop = "14px";
+  cambiar.onclick = () => askChange({
+    slug: r.slug, name: r.slug, tagline: "", platform: r.platform, entities: [], history: [],
+  });
+  box.appendChild(cambiar);
+
   const again = el("button", "btn ghost", "Crear otra app");
-  again.style.marginTop = "14px";
+  again.style.marginTop = "8px";
   again.onclick = () => { sessionId = null; askIdea(); };
   box.appendChild(again);
 }
