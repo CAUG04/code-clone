@@ -1,0 +1,55 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../api";
+import { APP, ENTITIES } from "../entities";
+
+export default function Home() {
+  const [counts, setCounts] = useState<Record<string, number | null>>({});
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    ENTITIES.forEach((e) => {
+      api
+        .list(e.plural)
+        .then((items) => setCounts((c) => ({ ...c, [e.plural]: items.length })))
+        .catch((err) => {
+          setCounts((c) => ({ ...c, [e.plural]: null }));
+          setError((err as Error).message);
+        });
+    });
+  }, []);
+
+  return (
+    <div>
+      <header className="page-header hero">
+        <div>
+          <h1>{APP.name}</h1>
+          <p className="muted">{APP.tagline}</p>
+        </div>
+      </header>
+
+      {error && <div className="error">{error}</div>}
+
+      <section className="stats">
+        {ENTITIES.map((e) => (
+          <Link key={e.plural} to={`/${e.plural}`} className="card stat">
+            <span className="stat-value">{counts[e.plural] ?? "–"}</span>
+            <span className="stat-label">{e.titlePlural}</span>
+            <span className="muted small">{e.description}</span>
+          </Link>
+        ))}
+      </section>
+
+      {APP.features.length > 0 && (
+        <section className="card">
+          <h2>Lo que puedes hacer</h2>
+          <ul className="features">
+            {APP.features.map((f) => (
+              <li key={f}>✓ {f}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}

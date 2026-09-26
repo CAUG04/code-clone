@@ -1,0 +1,32 @@
+// Generado automáticamente a partir de la especificación de la app.
+// Describe los modelos de datos para que la interfaz se construya sola.
+
+export type FieldType =
+  | "string" | "text" | "integer" | "float" | "boolean"
+  | "date" | "datetime" | "email" | "url";
+
+export interface FieldMeta {
+  name: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  description: string;
+}
+
+export interface EntityMeta {
+  name: string;
+  plural: string;
+  title: string;
+  titlePlural: string;
+  description: string;
+  displayField: string;
+  fields: FieldMeta[];
+}
+
+export const APP = {= app_meta_json =} as const;
+
+export const ENTITIES: EntityMeta[] = {= entities_json =};
+
+export function findEntity(plural: string | undefined): EntityMeta | undefined {
+  return ENTITIES.find((e) => e.plural === plural);
+}

@@ -1,0 +1,77 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
+const TOKEN_KEY = "{= spec.slug =}_token";
+
+let token = null;
+const listeners = new Set();
+
+export const session = {
+  get token() {
+    return token;
+  },
+  async load() {
+    try {
+      token = await AsyncStorage.getItem(TOKEN_KEY);
+    } catch {
+      token = null;
+    }
+    return token;
+  },
+  async set(value) {
+    token = value;
+    try {
+      await AsyncStorage.setItem(TOKEN_KEY, value);
+    } catch {}
+    listeners.forEach((fn) => fn(token));
+  },
+  async clear() {
+    token = null;
+    try {
+      await AsyncStorage.removeItem(TOKEN_KEY);
+    } catch {}
+    listeners.forEach((fn) => fn(token));
+  },
+  subscribe(fn) {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
+  },
+};
+
+async function request(path, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new Error(
+      `No pude conectar con ${API_URL}. Revisa que el backend esté corriendo y que EXPO_PUBLIC_API_URL tenga la IP de tu PC.`,
+    );
+  }
+  if (res.status === 401) await session.clear();
+  if (!res.ok) {
+    let message = `Error ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body.detail === "string") message = body.detail;
+      else if (Array.isArray(body.detail))
+        message = body.detail.map((d) => `${(d.loc || []).slice(-1)[0] || ""}: ${d.msg}`).join(" · ");
+    } catch {}
+    throw new Error(message);
+  }
+  if (res.status === 204) return undefined;
+  return res.json();
+}
+
+export const api = {
+  list: (plural) => request(`/api/${plural}`),
+  create: (plural, data) => request(`/api/${plural}`, { method: "POST", body: JSON.stringify(data) }),
+  update: (plural, id, data) => request(`/api/${plural}/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  remove: (plural, id) => request(`/api/${plural}/${id}`, { method: "DELETE" }),
+  login: (email, password) =>
+    request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  register: (email, password, full_name) =>
+    request("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, full_name }) }),
+};

@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": {= spec.app_name | tojson =},
+    "slug": "{= spec.slug =}",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "primaryColor": "{= spec.color_primary =}",
+    "ios": { "supportsTablet": true },
+    "android": { "adaptiveIcon": { "backgroundColor": "{= spec.color_primary =}" } },
+    "web": { "bundler": "metro" }
+  }
+}

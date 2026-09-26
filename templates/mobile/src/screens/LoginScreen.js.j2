@@ -1,0 +1,93 @@
+{% if spec.needs_auth %}
+import { useState } from "react";
+import {
+  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { api, session } from "../api";
+import { APP } from "../entities";
+import { useTheme } from "../theme";
+
+export default function LoginScreen() {
+  const t = useTheme();
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit() {
+    setError("");
+    setLoading(true);
+    try {
+      const res = mode === "login"
+        ? await api.login(email.trim(), password)
+        : await api.register(email.trim(), password, fullName.trim());
+      await session.set(res.access_token);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const input = [styles.input, { borderColor: t.border, color: t.text, backgroundColor: t.bg }];
+
+  return (
+    <SafeAreaView style={[styles.flex, { backgroundColor: t.primary }]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={styles.hero}>
+          <Text style={styles.title}>{APP.name}</Text>
+          <Text style={styles.tagline}>{APP.tagline}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: t.surface }]}>
+          <Text style={[styles.h2, { color: t.text }]}>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</Text>
+          {mode === "register" && (
+            <TextInput style={input} placeholder="Nombre" placeholderTextColor={t.muted} value={fullName} onChangeText={setFullName} />
+          )}
+          <TextInput
+            style={input} placeholder="Correo" placeholderTextColor={t.muted} value={email} onChangeText={setEmail}
+            autoCapitalize="none" keyboardType="email-address" autoComplete="email"
+          />
+          <TextInput
+            style={input} placeholder="Contraseña" placeholderTextColor={t.muted} value={password}
+            onChangeText={setPassword} secureTextEntry
+          />
+          {!!error && <Text style={[styles.error, { color: t.danger }]}>{error}</Text>}
+          <Pressable style={[styles.button, { backgroundColor: t.primary }]} onPress={submit} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : (
+              <Text style={styles.buttonText}>{mode === "login" ? "Entrar" : "Registrarme"}</Text>
+            )}
+          </Pressable>
+          <Pressable onPress={() => setMode(mode === "login" ? "register" : "login")}>
+            <Text style={[styles.link, { color: t.primary }]}>
+              {mode === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+            </Text>
+          </Pressable>
+          <Text style={[styles.hint, { color: t.muted }]}>Demo: demo@demo.com / demo1234</Text>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  hero: { flex: 1, justifyContent: "flex-end", padding: 28 },
+  title: { color: "#fff", fontSize: 34, fontWeight: "800" },
+  tagline: { color: "#ffffffdd", fontSize: 17, marginTop: 6 },
+  card: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36, gap: 12 },
+  h2: { fontSize: 22, fontWeight: "700", marginBottom: 4 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  button: { borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  buttonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  link: { textAlign: "center", paddingVertical: 6, fontWeight: "600" },
+  error: { fontSize: 14 },
+  hint: { textAlign: "center", fontSize: 12 },
+});
+{% else %}
+export default function LoginScreen() {
+  return null;
+}
+{% endif %}

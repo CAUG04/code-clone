@@ -1,0 +1,35 @@
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
+)
+
+from .database import Base
+{% if spec.needs_auth %}
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    full_name = Column(String(255), nullable=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+{% endif %}
+{% for e in spec.entities %}
+
+
+class {= e.name =}(Base):
+    """{= e.description =}"""
+    __tablename__ = "{= e.plural =}"
+
+    id = Column(Integer, primary_key=True, index=True)
+{% for f in e.fields %}
+    {= f.name =} = Column({= f.sa_type =}, nullable={= 'False' if f.required else 'True' =})
+{% endfor %}
+{% if spec.needs_auth %}
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+{% endif %}
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+{% endfor %}

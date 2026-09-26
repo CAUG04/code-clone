@@ -1,0 +1,89 @@
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { session } from "./src/api";
+import { APP, ENTITIES } from "./src/entities";
+import { useTheme } from "./src/theme";
+import HomeScreen from "./src/screens/HomeScreen";
+import EntityScreen from "./src/screens/EntityScreen";
+import LoginScreen from "./src/screens/LoginScreen";
+
+const NEEDS_AUTH = {= 'true' if spec.needs_auth else 'false' =};
+
+function Main() {
+  const t = useTheme();
+  const [ready, setReady] = useState(!NEEDS_AUTH);
+  const [token, setToken] = useState(null);
+  const [tab, setTab] = useState("home");
+
+  useEffect(() => {
+    if (!NEEDS_AUTH) return;
+    session.load().then((tk) => {
+      setToken(tk);
+      setReady(true);
+    });
+    return session.subscribe(setToken);
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={[styles.center, { backgroundColor: t.bg }]}>
+        <ActivityIndicator color={t.primary} />
+      </View>
+    );
+  }
+
+  if (NEEDS_AUTH && !token) return <LoginScreen />;
+
+  const entity = ENTITIES.find((e) => e.plural === tab);
+  const tabs = [{ key: "home", label: "Inicio" }, ...ENTITIES.map((e) => ({ key: e.plural, label: e.titlePlural }))];
+
+  return (
+    <SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={["top", "bottom"]}>
+      <StatusBar style="auto" />
+      <View style={styles.flex}>
+        {entity ? (
+          <EntityScreen key={entity.plural} entity={entity} />
+        ) : (
+          <HomeScreen onOpen={setTab} onLogout={NEEDS_AUTH ? () => session.clear() : null} />
+        )}
+      </View>
+
+      <View style={[styles.tabbar, { backgroundColor: t.surface, borderTopColor: t.border }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {tabs.map((item) => {
+            const active = item.key === tab;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setTab(item.key)}
+                style={[styles.tab, active && { backgroundColor: t.primarySoft }]}
+              >
+                <Text style={{ color: active ? t.primary : t.muted, fontWeight: active ? "700" : "500" }}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Main />
+    </SafeAreaProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  tabbar: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 8 },
+  tabs: { paddingHorizontal: 10, gap: 6 },
+  tab: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+});

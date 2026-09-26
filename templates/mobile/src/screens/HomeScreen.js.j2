@@ -1,0 +1,95 @@
+import { useCallback, useEffect, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { api } from "../api";
+import { APP, ENTITIES } from "../entities";
+import { useTheme } from "../theme";
+
+export default function HomeScreen({ onOpen, onLogout }) {
+  const t = useTheme();
+  const [counts, setCounts] = useState({});
+  const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setError("");
+    const results = await Promise.all(
+      ENTITIES.map((e) =>
+        api.list(e.plural).then((xs) => [e.plural, xs.length]).catch((err) => {
+          setError(err.message);
+          return [e.plural, null];
+        }),
+      ),
+    );
+    setCounts(Object.fromEntries(results));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={t.primary} />}
+    >
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: t.text }]}>{APP.name}</Text>
+          <Text style={{ color: t.muted, fontSize: 15 }}>{APP.tagline}</Text>
+        </View>
+        {onLogout && (
+          <Pressable onPress={onLogout} hitSlop={10}>
+            <Text style={{ color: t.muted, fontWeight: "600" }}>Salir</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {!!error && <Text style={[styles.error, { color: t.danger }]}>{error}</Text>}
+
+      <View style={styles.grid}>
+        {ENTITIES.map((e) => (
+          <Pressable
+            key={e.plural}
+            onPress={() => onOpen(e.plural)}
+            style={({ pressed }) => [
+              styles.stat,
+              { backgroundColor: t.surface, borderColor: t.border, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.statValue, { color: t.primary }]}>{counts[e.plural] ?? "–"}</Text>
+            <Text style={[styles.statLabel, { color: t.text }]}>{e.titlePlural}</Text>
+            <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={2}>{e.description}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {APP.features.length > 0 && (
+        <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <Text style={[styles.h2, { color: t.text }]}>Lo que puedes hacer</Text>
+          {APP.features.map((f) => (
+            <Text key={f} style={{ color: t.text, marginTop: 8 }}>✓ {f}</Text>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { padding: 18, gap: 16 },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  title: { fontSize: 28, fontWeight: "800" },
+  error: { fontSize: 14 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  stat: { flexBasis: "47%", flexGrow: 1, borderWidth: 1, borderRadius: 16, padding: 16, gap: 2 },
+  statValue: { fontSize: 30, fontWeight: "800" },
+  statLabel: { fontSize: 15, fontWeight: "700" },
+  card: { borderWidth: 1, borderRadius: 16, padding: 16 },
+  h2: { fontSize: 17, fontWeight: "700" },
+});

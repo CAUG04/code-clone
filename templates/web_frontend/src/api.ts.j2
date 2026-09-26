@@ -1,0 +1,88 @@
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
+const TOKEN_KEY = "{= spec.slug =}_token";
+
+export type Item = { id: number; created_at: string; [key: string]: unknown };
+
+export const session = {
+  get token(): string | null {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set(token: string) {
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      /* navegación privada: el token vive solo en esta pestaña */
+    }
+  },
+  clear() {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = session.token;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new ApiError(0, `No pude conectar con el servidor (${API_URL}). ¿Está corriendo el backend?`);
+  }
+
+  if (res.status === 401) {
+    session.clear();
+    window.dispatchEvent(new Event("auth-changed"));
+  }
+  if (!res.ok) {
+    let message = `Error ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body.detail === "string") message = body.detail;
+      else if (Array.isArray(body.detail))
+        message = body.detail.map((d: { loc?: string[]; msg: string }) =>
+          `${d.loc?.slice(-1)[0] ?? ""}: ${d.msg}`).join(" · ");
+    } catch {
+      /* respuesta sin JSON */
+    }
+    throw new ApiError(res.status, message);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  list: (plural: string) => request<Item[]>(`/api/${plural}`),
+  create: (plural: string, data: Record<string, unknown>) =>
+    request<Item>(`/api/${plural}`, { method: "POST", body: JSON.stringify(data) }),
+  update: (plural: string, id: number, data: Record<string, unknown>) =>
+    request<Item>(`/api/${plural}/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  remove: (plural: string, id: number) =>
+    request<void>(`/api/${plural}/${id}`, { method: "DELETE" }),
+{% if spec.needs_auth %}
+  login: (email: string, password: string) =>
+    request<{ access_token: string; user: { email: string; full_name?: string } }>(
+      "/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  register: (email: string, password: string, full_name: string) =>
+    request<{ access_token: string; user: { email: string; full_name?: string } }>(
+      "/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, full_name }) }),
+  me: () => request<{ email: string; full_name?: string }>("/api/auth/me"),
+{% endif %}
+};

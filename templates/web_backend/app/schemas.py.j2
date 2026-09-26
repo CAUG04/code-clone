@@ -1,0 +1,58 @@
+import datetime as dt
+
+from pydantic import BaseModel, ConfigDict
+{% if spec.needs_auth %}
+
+
+# ---------- Auth ----------
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    full_name: str | None = None
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: str
+    full_name: str | None = None
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserRead
+{% endif %}
+{% for e in spec.entities %}
+
+
+# ---------- {= e.name =} ----------
+
+class {= e.name =}Base(BaseModel):
+{% for f in e.fields %}
+{% if f.required %}
+    {= f.name =}: {= f.py_type =}
+{% else %}
+    {= f.name =}: {= f.py_type =} | None = None
+{% endif %}
+{% endfor %}
+{% if not e.fields %}
+    pass
+{% endif %}
+
+
+class {= e.name =}Create({= e.name =}Base):
+    pass
+
+
+class {= e.name =}Read({= e.name =}Base):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+{% endfor %}

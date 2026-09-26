@@ -1,0 +1,28 @@
+import { useColorScheme } from "react-native";
+
+const PRIMARY = "{= spec.color_primary =}";
+
+const light = {
+  primary: PRIMARY,
+  primarySoft: PRIMARY + "1f",
+  bg: "#f6f7fb",
+  surface: "#ffffff",
+  text: "#16181d",
+  muted: "#6b7280",
+  border: "#e5e7eb",
+  danger: "#dc2626",
+};
+
+const dark = {
+  ...light,
+  primarySoft: PRIMARY + "33",
+  bg: "#0f1115",
+  surface: "#181b21",
+  text: "#eef0f3",
+  muted: "#9aa1ad",
+  border: "#2a2f38",
+};
+
+export function useTheme() {
+  return useColorScheme() === "dark" ? dark : light;
+}

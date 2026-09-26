@@ -1,0 +1,91 @@
+{% if spec.needs_auth %}
+"""Autenticación simple con JWT y contraseñas con hash PBKDF2."""
+import hashlib
+import hmac
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
+
+from . import models, schemas
+from .database import get_db
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+ALGORITHM = "HS256"
+TOKEN_DAYS = 7
+
+router = APIRouter(prefix="/api/auth", tags=["Auth"])
+bearer = HTTPBearer(auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+    return f"{salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, digest = stored.split("$", 1)
+    except ValueError:
+        return False
+    check = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+    return hmac.compare_digest(check.hex(), digest)
+
+
+def create_token(user_id: int) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(days=TOKEN_DAYS)
+    return jwt.encode({"sub": str(user_id), "exp": exp}, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
+) -> models.User:
+    if creds is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No autenticado")
+    try:
+        payload = jwt.decode(creds.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload["sub"])
+    except Exception:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token inválido o expirado")
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no encontrado")
+    return user
+
+
+@router.post("/register", response_model=schemas.Token)
+def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
+    email = data.email.strip().lower()
+    if "@" not in email:
+        raise HTTPException(400, "Correo inválido")
+    if len(data.password) < 6:
+        raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres")
+    if db.query(models.User).filter(models.User.email == email).first():
+        raise HTTPException(400, "Ya existe una cuenta con ese correo")
+    user = models.User(
+        email=email, full_name=data.full_name, password_hash=hash_password(data.password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"access_token": create_token(user.id), "user": user}
+
+
+@router.post("/login", response_model=schemas.Token)
+def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == data.email.strip().lower()).first()
+    if not user or not verify_password(data.password, user.password_hash):
+        raise HTTPException(401, "Correo o contraseña incorrectos")
+    return {"access_token": create_token(user.id), "user": user}
+
+
+@router.get("/me", response_model=schemas.UserRead)
+def me(user: models.User = Depends(get_current_user)):
+    return user
+{% endif %}

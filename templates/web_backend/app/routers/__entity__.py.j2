@@ -1,0 +1,62 @@
+"""CRUD de {= e.title_plural =} — {= e.description =}"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..database import get_db
+{% if spec.needs_auth %}
+from ..auth import get_current_user
+{% set user_dep = ", user: models.User = Depends(get_current_user)" %}
+{% else %}
+{% set user_dep = "" %}
+{% endif %}
+
+router = APIRouter(prefix="/api/{= e.plural =}", tags=["{= e.title_plural =}"])
+Model = models.{= e.name =}
+
+
+def _get_or_404(db: Session, item_id: int{% if spec.needs_auth %}, user: models.User{% endif %}):
+    item = db.get(Model, item_id)
+    if not item{% if spec.needs_auth %} or item.owner_id != user.id{% endif %}:
+        raise HTTPException(404, "{= e.name =} no encontrado")
+    return item
+
+
+@router.get("", response_model=list[schemas.{= e.name =}Read])
+def list_{= e.plural =}(db: Session = Depends(get_db){= user_dep =}):
+    q = db.query(Model)
+{% if spec.needs_auth %}
+    q = q.filter(Model.owner_id == user.id)
+{% endif %}
+    return q.order_by(Model.id.desc()).all()
+
+
+@router.post("", response_model=schemas.{= e.name =}Read, status_code=201)
+def create_{= e.snake =}(data: schemas.{= e.name =}Create, db: Session = Depends(get_db){= user_dep =}):
+    item = Model(**data.model_dump(){% if spec.needs_auth %}, owner_id=user.id{% endif %})
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/{item_id}", response_model=schemas.{= e.name =}Read)
+def get_{= e.snake =}(item_id: int, db: Session = Depends(get_db){= user_dep =}):
+    return _get_or_404(db, item_id{% if spec.needs_auth %}, user{% endif %})
+
+
+@router.put("/{item_id}", response_model=schemas.{= e.name =}Read)
+def update_{= e.snake =}(item_id: int, data: schemas.{= e.name =}Create, db: Session = Depends(get_db){= user_dep =}):
+    item = _get_or_404(db, item_id{% if spec.needs_auth %}, user{% endif %})
+    for key, value in data.model_dump().items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/{item_id}", status_code=204)
+def delete_{= e.snake =}(item_id: int, db: Session = Depends(get_db){= user_dep =}):
+    item = _get_or_404(db, item_id{% if spec.needs_auth %}, user{% endif %})
+    db.delete(item)
+    db.commit()

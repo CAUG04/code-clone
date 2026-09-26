@@ -1,0 +1,241 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api, Item } from "../api";
+import { EntityMeta, FieldMeta, findEntity } from "../entities";
+
+type FormValues = Record<string, string | boolean>;
+
+function emptyForm(entity: EntityMeta): FormValues {
+  const v: FormValues = {};
+  entity.fields.forEach((f) => (v[f.name] = f.type === "boolean" ? false : ""));
+  return v;
+}
+
+function toForm(entity: EntityMeta, item: Item): FormValues {
+  const v: FormValues = {};
+  entity.fields.forEach((f) => {
+    const raw = item[f.name];
+    if (f.type === "boolean") v[f.name] = Boolean(raw);
+    else if (raw === null || raw === undefined) v[f.name] = "";
+    else if (f.type === "datetime") v[f.name] = String(raw).slice(0, 16);
+    else v[f.name] = String(raw);
+  });
+  return v;
+}
+
+function fromForm(entity: EntityMeta, values: FormValues): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  entity.fields.forEach((f) => {
+    const raw = values[f.name];
+    if (f.type === "boolean") out[f.name] = Boolean(raw);
+    else if (raw === "" || raw === undefined) out[f.name] = null;
+    else if (f.type === "integer") out[f.name] = parseInt(String(raw), 10);
+    else if (f.type === "float") out[f.name] = parseFloat(String(raw));
+    else out[f.name] = raw;
+  });
+  return out;
+}
+
+function formatValue(field: FieldMeta, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (field.type === "boolean") return value ? "Sí" : "No";
+  if (field.type === "datetime") return new Date(String(value)).toLocaleString();
+  if (field.type === "date") return new Date(String(value) + "T00:00").toLocaleDateString();
+  if (field.type === "float") return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const s = String(value);
+  return s.length > 60 ? s.slice(0, 57) + "…" : s;
+}
+
+function inputType(f: FieldMeta): string {
+  return {
+    string: "text", text: "text", integer: "number", float: "number", boolean: "checkbox",
+    date: "date", datetime: "datetime-local", email: "email", url: "url",
+  }[f.type];
+}
+
+export default function EntityPage() {
+  const { plural } = useParams();
+  const entity = findEntity(plural);
+
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [values, setValues] = useState<FormValues>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!entity) return;
+    setLoading(true);
+    setError("");
+    setSearch("");
+    api
+      .list(entity.plural)
+      .then(setItems)
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false));
+  }, [entity?.plural]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) =>
+      Object.values(it).some((v) => String(v ?? "").toLowerCase().includes(q)),
+    );
+  }, [items, search]);
+
+  if (!entity) return <div className="card">Sección no encontrada.</div>;
+
+  const columns = entity.fields.slice(0, 5);
+
+  function openNew() {
+    setEditing(null);
+    setValues(emptyForm(entity!));
+    setFormOpen(true);
+  }
+
+  function openEdit(item: Item) {
+    setEditing(item);
+    setValues(toForm(entity!, item));
+    setFormOpen(true);
+  }
+
+  async function save(ev: FormEvent) {
+    ev.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const data = fromForm(entity!, values);
+      if (editing) {
+        const updated = await api.update(entity!.plural, editing.id, data);
+        setItems((xs) => xs.map((x) => (x.id === updated.id ? updated : x)));
+      } else {
+        const created = await api.create(entity!.plural, data);
+        setItems((xs) => [created, ...xs]);
+      }
+      setFormOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(item: Item) {
+    const label = String(item[entity!.displayField] ?? `#${item.id}`);
+    if (!confirm(`¿Eliminar "${label}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await api.remove(entity!.plural, item.id);
+      setItems((xs) => xs.filter((x) => x.id !== item.id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return (
+    <div>
+      <header className="page-header">
+        <div>
+          <h1>{entity.titlePlural}</h1>
+          <p className="muted">{entity.description}</p>
+        </div>
+        <button className="btn primary" onClick={openNew}>+ Nuevo</button>
+      </header>
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="card">
+        <input
+          className="search"
+          placeholder={`Buscar en ${entity.titlePlural.toLowerCase()}...`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+
+        {loading ? (
+          <p className="muted">Cargando...</p>
+        ) : filtered.length === 0 ? (
+          <div className="empty">
+            <p>{items.length === 0 ? "Aún no hay registros." : "Sin resultados para tu búsqueda."}</p>
+            {items.length === 0 && <button className="btn primary" onClick={openNew}>Crear el primero</button>}
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {columns.map((c) => <th key={c.name}>{c.label}</th>)}
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => (
+                  <tr key={item.id}>
+                    {columns.map((c) => <td key={c.name}>{formatValue(c, item[c.name])}</td>)}
+                    <td className="actions">
+                      <button className="btn ghost" onClick={() => openEdit(item)}>Editar</button>
+                      <button className="btn danger" onClick={() => remove(item)}>Eliminar</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {formOpen && (
+        <div className="modal-backdrop" onClick={() => setFormOpen(false)}>
+          <form className="card modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+            <h2>{editing ? `Editar ${entity.title}` : `Nuevo ${entity.title}`}</h2>
+            {entity.fields.map((f) => (
+              <label key={f.name} className={f.type === "boolean" ? "check" : ""}>
+                {f.type === "boolean" ? (
+                  <>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(values[f.name])}
+                      onChange={(e) => setValues({ ...values, [f.name]: e.target.checked })}
+                    />
+                    {f.label}
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {f.label}
+                      {f.required && <b className="req"> *</b>}
+                    </span>
+                    {f.type === "text" ? (
+                      <textarea
+                        rows={4}
+                        required={f.required}
+                        value={String(values[f.name] ?? "")}
+                        placeholder={f.description}
+                        onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                      />
+                    ) : (
+                      <input
+                        type={inputType(f)}
+                        step={f.type === "float" ? "any" : undefined}
+                        required={f.required}
+                        value={String(values[f.name] ?? "")}
+                        placeholder={f.description}
+                        onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                      />
+                    )}
+                  </>
+                )}
+              </label>
+            ))}
+            <div className="modal-actions">
+              <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>Cancelar</button>
+              <button className="btn primary" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}

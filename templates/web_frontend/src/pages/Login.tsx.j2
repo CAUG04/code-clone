@@ -1,0 +1,66 @@
+{% if spec.needs_auth %}
+import { FormEvent, useState } from "react";
+import { api, session } from "../api";
+import { APP } from "../entities";
+
+export default function Login({ onLogin }: { onLogin: () => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(ev: FormEvent) {
+    ev.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res =
+        mode === "login"
+          ? await api.login(email, password)
+          : await api.register(email, password, fullName);
+      session.set(res.access_token);
+      onLogin();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="auth-page">
+      <div className="auth-hero">
+        <h1>{APP.name}</h1>
+        <p>{APP.tagline}</p>
+      </div>
+      <form className="card auth-card" onSubmit={submit}>
+        <h2>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2>
+        {mode === "register" && (
+          <label>
+            Nombre
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Tu nombre" />
+          </label>
+        )}
+        <label>
+          Correo
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" />
+        </label>
+        <label>
+          Contraseña
+          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+        </label>
+        {error && <div className="error">{error}</div>}
+        <button className="btn primary" disabled={loading}>
+          {loading ? "Un momento..." : mode === "login" ? "Entrar" : "Registrarme"}
+        </button>
+        <button type="button" className="btn link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+          {mode === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+        </button>
+        <p className="hint">Demo: demo@demo.com / demo1234</p>
+      </form>
+    </div>
+  );
+}
+{% endif %}

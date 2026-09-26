@@ -1,0 +1,59 @@
+import { useEffect, useState } from "react";
+import { NavLink, Route, Routes } from "react-router-dom";
+import { session } from "./api";
+import { APP, ENTITIES } from "./entities";
+import Home from "./pages/Home";
+import EntityPage from "./pages/EntityPage";
+{% if spec.needs_auth %}
+import Login from "./pages/Login";
+{% endif %}
+
+export default function App() {
+  const [menuOpen, setMenuOpen] = useState(false);
+{% if spec.needs_auth %}
+  const [token, setToken] = useState<string | null>(session.token);
+
+  useEffect(() => {
+    const onChange = () => setToken(session.token);
+    window.addEventListener("auth-changed", onChange);
+    return () => window.removeEventListener("auth-changed", onChange);
+  }, []);
+
+  if (!token) return <Login onLogin={() => setToken(session.token)} />;
+
+  const logout = () => {
+    session.clear();
+    setToken(null);
+  };
+{% endif %}
+
+  return (
+    <div className="layout">
+      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+        <div className="brand">
+          <span className="brand-dot" />
+          {APP.name}
+        </div>
+        <nav onClick={() => setMenuOpen(false)}>
+          <NavLink to="/" end>🏠 Inicio</NavLink>
+          {ENTITIES.map((e) => (
+            <NavLink key={e.plural} to={`/${e.plural}`}>
+              {e.titlePlural}
+            </NavLink>
+          ))}
+        </nav>
+{% if spec.needs_auth %}
+        <button className="btn ghost logout" onClick={logout}>Cerrar sesión</button>
+{% endif %}
+      </aside>
+
+      <main className="content">
+        <button className="menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menú">☰</button>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/:plural" element={<EntityPage />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
