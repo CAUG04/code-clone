@@ -1,0 +1,23 @@
+/**
+ * Borra la base de datos de E2E antes de que Playwright arranque nada.
+ *
+ * Tiene que correr ANTES de `playwright test`, no como globalSetup: Playwright
+ * levanta el backend antes de ejecutar el globalSetup, y borrar el archivo
+ * SQLite con el servidor ya conectado deja el handle apuntando a un archivo
+ * que no existe. El síntoma es "attempt to write a readonly database" o
+ * "no such table".
+ */
+import { existsSync, unlinkSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const aqui = dirname(fileURLToPath(import.meta.url));
+const backend = resolve(aqui, "..", "..", "..", "backend");
+
+for (const archivo of ["e2e.db", "e2e.db-journal", "e2e.db-wal", "e2e.db-shm"]) {
+  const ruta = resolve(backend, archivo);
+  if (existsSync(ruta)) {
+    unlinkSync(ruta);
+    console.log(`[e2e] base anterior borrada: ${archivo}`);
+  }
+}

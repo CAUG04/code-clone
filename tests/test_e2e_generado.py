@@ -55,8 +55,9 @@ class TestArchivos:
             assert (frontend / "playwright.config.ts").is_file()
             nombres = [f.name for f in _archivos_e2e(proyecto)]
             for esperado in ["ayudas.ts", "humo.spec.ts", "crud.spec.ts",
-                             "seguridad.spec.ts", "global-setup.ts"]:
+                             "seguridad.spec.ts"]:
                 assert esperado in nombres, f"falta {esperado}"
+            assert (frontend / "tests/e2e/limpiar-base.mjs").is_file()
 
     def test_una_app_movil_no_lleva_e2e_de_web(self, tmp_path):
         """Playwright prueba la web; la app móvil no tiene navegador."""
@@ -67,7 +68,18 @@ class TestArchivos:
         for proyecto in proyectos.values():
             pkg = json.loads((proyecto / "frontend" / "package.json").read_text())
             assert "@playwright/test" in pkg["devDependencies"]
-            assert pkg["scripts"]["test:e2e"] == "playwright test"
+            assert "playwright test" in pkg["scripts"]["test:e2e"]
+
+    def test_el_codigo_e2e_no_usa_dirname(self, proyectos):
+        """El frontend generado es ESM ("type": "module")."""
+        for proyecto in proyectos.values():
+            assert json.loads((proyecto / "frontend/package.json").read_text())["type"] == "module"
+            for archivo in list(_archivos_e2e(proyecto)) + list(
+                (proyecto / "frontend/tests/e2e").glob("*.mjs")
+            ):
+                assert "__dirname" not in archivo.read_text(encoding="utf-8"), (
+                    f"{archivo.name} usa __dirname, que no existe en ESM"
+                )
 
     def test_los_artefactos_de_playwright_se_ignoran_en_git(self, proyectos):
         for proyecto in proyectos.values():
@@ -89,11 +101,27 @@ class TestConfiguracion:
         assert "e2e.db" in cfg, "no debe usar la base de desarrollo"
         assert 'SKIP_SEED: "1"' in cfg, "los datos de ejemplo harían fallar los conteos"
 
-    def test_el_global_setup_borra_la_base_anterior(self, proyectos):
-        cfg = (proyectos["auth"] / "frontend" / "playwright.config.ts").read_text()
-        assert "globalSetup" in cfg
-        setup = (proyectos["auth"] / "frontend/tests/e2e/global-setup.ts").read_text()
-        assert "e2e.db" in setup and "unlinkSync" in setup
+    def test_la_base_se_borra_antes_de_arrancar_playwright(self, proyectos):
+        """No puede ser un globalSetup.
+
+        Playwright levanta el backend ANTES del globalSetup, así que borrar el
+        archivo SQLite desde ahí deja al servidor con un handle a un archivo
+        inexistente: "attempt to write a readonly database". Tiene que correr
+        antes de `playwright test`.
+        """
+        for proyecto in proyectos.values():
+            cfg = (proyecto / "frontend" / "playwright.config.ts").read_text()
+            assert "globalSetup" not in cfg, (
+                "borrar la base desde globalSetup rompe el backend ya arrancado"
+            )
+            pkg = json.loads((proyecto / "frontend" / "package.json").read_text())
+            script = pkg["scripts"]["test:e2e"]
+            assert script.index("limpiar-base") < script.index("playwright test"), (
+                "la limpieza debe ir antes de playwright test"
+            )
+            limpieza = (proyecto / "frontend/tests/e2e/limpiar-base.mjs").read_text()
+            assert "e2e.db" in limpieza and "unlinkSync" in limpieza
+            assert "__dirname" not in limpieza, "no existe en ESM; usar import.meta.url"
 
     def test_no_corren_en_paralelo(self, proyectos):
         """Comparten una sola base de datos."""
