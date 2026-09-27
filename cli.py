@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,16 +23,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import questionary  # noqa: E402
-from rich.console import Console  # noqa: E402
-from rich.panel import Panel  # noqa: E402
-
 from agent import llm  # noqa: E402
+from agent.ui import console  # noqa: E402
 from agent.generator import generate_project  # noqa: E402
 from agent.github_publish import PublishError, publish  # noqa: E402
 from agent.interview import Interview, confirm_spec_loop, demo_spec  # noqa: E402
 from agent.spec import AppSpec  # noqa: E402
-
-console = Console()
 
 
 BANNER = """[bold magenta]
@@ -159,99 +156,64 @@ def maybe_publish(project: Path, spec: AppSpec | None, args: argparse.Namespace,
         console.print(f"[red]No pude subir a GitHub:[/red] {exc}")
 
 
-def next_steps(project: Path, spec: AppSpec) -> str:
-    lines = [f"[bold]cd {project}[/bold]", "", "[bold]Backend[/bold] (terminal 1):",
-             "  cd backend && python3 -m venv .venv && source .venv/bin/activate",
-             "  pip install -r requirements.txt && uvicorn app.main:app --reload"]
-    if spec.wants_web:
-        lines += ["", "[bold]Web[/bold] (terminal 2):", "  cd frontend && npm install && npm run dev",
-                  "  → http://localhost:5173"]
-    if spec.wants_mobile:
-        lines += ["", "[bold]Móvil[/bold] (terminal 3):",
-                  "  cd mobile && npm install && npm run setup",
-                  "  cp .env.example .env   (pon la IP de tu PC)",
-                  "  npx expo start   → escanea el QR con Expo Go"]
-    lines += ["", "O todo junto con Docker: [bold]docker compose up --build[/bold]"]
-    if spec.needs_auth:
-        lines += ["", "Usuario demo: [bold]demo@demo.com[/bold] / [bold]demo1234[/bold]"]
-    return "\n".join(lines)
+def print_next_steps(project: Path, spec: AppSpec) -> None:
+    """Imprime los comandos SIN recuadro.
 
-
-def do_iterate(args: argparse.Namespace) -> None:
-    from agent import iterate as it
-
-    project = args.iterate.resolve()
-    instruccion = (args.instruction or "").strip()
-
-    if not instruccion:
-        if not interactive():
-            console.print(
-                "[red]Falta decir qué cambiar.[/red]\n"
-                f'  python cli.py --iterate {args.iterate} "agrega paginación a la lista"'
-            )
-            sys.exit(2)
-        instruccion = (questionary.text(
-            f"¿Qué quieres cambiar en {project.name}?"
-        ).ask() or "").strip()
-        if not instruccion:
-            console.print("Cancelado.")
-            sys.exit(1)
-
-    console.print(f"[dim]Motor: {llm.backend_description()}[/dim]")
-    console.print(f"[magenta]Modificando[/magenta] [bold]{project.name}[/bold]: {instruccion}\n")
-
-    estado = {"actual": None}
-
-    def note(mensaje: str) -> None:
-        if estado["actual"] is not None:
-            console.print(f"  [dim]✓ {estado['actual']}[/dim]")
-        estado["actual"] = mensaje
-        console.print(f"  [magenta]→[/magenta] {mensaje}")
-
-    resultado = it.iterate(
-        project, instruccion, note=note, with_tests=not args.skip_tests
-    )
+    Un Panel de rich dibuja bordes con '│', y al copiar del terminal esos
+    caracteres se pegan al comando: el shell responde "command not found: │".
+    Los comandos van en líneas limpias, listas para copiar.
+    """
+    tiene_docker = shutil.which("docker") is not None
 
     console.print()
-    if resultado.error and not resultado.files_changed:
-        console.print(f"[red]{resultado.error}[/red]")
-        sys.exit(1)
+    console.print("[bold green]🚀 Cómo correr tu app[/bold green]")
+    console.print(f"[dim]El README dentro del proyecto tiene el detalle completo.[/dim]\n")
 
-    borde = "green" if resultado.ok else "yellow"
-    console.print(Panel(it.describe(resultado), title="Resultado", border_style=borde))
+    if tiene_docker:
+        console.print("[bold]Todo junto con Docker:[/bold]")
+        console.print(f"  cd {project}")
+        console.print("  docker compose up --build")
+        console.print()
+        console.print("[bold]O por partes:[/bold]")
+    else:
+        # Sin Docker instalado no tiene sentido ofrecerlo como primera opción.
+        console.print("[bold]Backend[/bold] (esta terminal):")
 
-    if resultado.tests_ran and not resultado.tests_passed:
-        console.print("\n[bold]Salida de las pruebas:[/bold]")
-        console.print(resultado.test_output[-3000:])
-        console.print(
-            f"\nPara deshacerlo: [bold]python cli.py --revert {args.iterate}[/bold]"
-        )
-        sys.exit(1)
+    if tiene_docker:
+        console.print("\n[bold]Backend[/bold] (terminal 1):")
+    console.print(f"  cd {project / 'backend'}")
+    console.print("  pip install -r requirements.txt")
+    console.print("  uvicorn app.main:app --reload")
+    console.print("  [dim]→ http://localhost:8000/docs[/dim]")
 
+    if spec.wants_web:
+        console.print("\n[bold]Web[/bold] (pestaña nueva, cmd+T):")
+        console.print(f"  cd {project / 'frontend'}")
+        console.print("  npm install")
+        console.print("  npm run dev")
+        console.print("  [dim]→ http://localhost:5173[/dim]")
 
-def do_revert(args: argparse.Namespace) -> None:
-    from agent import iterate as it
+    if spec.wants_mobile:
+        console.print("\n[bold]Móvil[/bold] (otra pestaña):")
+        console.print(f"  cd {project / 'mobile'}")
+        console.print("  npm install")
+        console.print("  npm run setup")
+        console.print("  cp .env.example .env    [dim]# pon la IP de tu PC[/dim]")
+        console.print("  npx expo start")
 
-    project = args.revert.resolve()
-    try:
-        mensaje = it.revert_last(project)
-    except RuntimeError as exc:
-        console.print(f"[red]{exc}[/red]")
-        sys.exit(1)
-    console.print(f"[green]✓ Deshecho:[/green] {mensaje}")
+    if spec.wants_web:
+        console.print("\n[bold]Pruebas E2E[/bold] (opcional):")
+        console.print(f"  cd {project / 'frontend'}")
+        console.print("  npx playwright install chromium")
+        console.print("  npm run test:e2e")
 
+    console.print("\n[bold]Cambiar algo después:[/bold]")
+    console.print(f'  python cli.py --iterate {project} "lo que quieras cambiar"')
 
-def do_history(args: argparse.Namespace) -> None:
-    from agent import iterate as it
-
-    project = args.history.resolve()
-    entradas = it.history(project)
-    if not entradas:
-        console.print(f"{project.name} no tiene historial de git.")
-        return
-    console.print(f"[bold]Iteraciones de {project.name}[/bold]\n")
-    for e in entradas:
-        console.print(f"  [dim]{e['sha']}[/dim]  {e['mensaje']}  [dim]({e['cuando']})[/dim]")
+    if spec.needs_auth:
+        console.print("\n[dim]Usuario de prueba: demo@demo.com / demo1234[/dim]")
+    if not tiene_docker:
+        console.print("\n[dim]No encontré Docker; no lo necesitas para correrla así.[/dim]")
 
 
 def main() -> None:
@@ -306,7 +268,7 @@ def main() -> None:
 
     maybe_publish(project, spec, args)
 
-    console.print(Panel(next_steps(project, spec), title="🚀 Cómo correr tu app", border_style="green"))
+    print_next_steps(project, spec)
 
 
 if __name__ == "__main__":
