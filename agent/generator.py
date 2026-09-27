@@ -147,6 +147,22 @@ def _e2e_entities(spec: AppSpec) -> list[dict]:
     ]
 
 
+def _sa_imports(spec: AppSpec) -> list[str]:
+    """Nombres de SQLAlchemy que el models.py generado necesita.
+
+    Importar de más deja código muerto que cualquier linter marca; por
+    ejemplo ForeignKey solo hace falta cuando la app tiene login.
+    """
+    usados = {"Column", "Integer", "DateTime"}  # id y created_at, siempre
+    for entidad in spec.entities:
+        for campo in entidad.fields:
+            # "String(255)" -> "String"
+            usados.add(campo.sa_type.split("(")[0])
+    if spec.needs_auth:
+        usados.update({"ForeignKey", "String"})  # users.email y la FK
+    return sorted(usados)
+
+
 def _context(spec: AppSpec) -> dict:
     app_meta = {
         "name": spec.app_name,
@@ -161,6 +177,7 @@ def _context(spec: AppSpec) -> dict:
         "entities_json": json.dumps(_entities_meta(spec), indent=2, ensure_ascii=False),
         "app_meta_json": json.dumps(app_meta, indent=2, ensure_ascii=False),
         "e2e_entities_json": json.dumps(_e2e_entities(spec), indent=2, ensure_ascii=False),
+        "sa_imports": _sa_imports(spec),
     }
 
 

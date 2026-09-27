@@ -71,6 +71,16 @@ python cli.py --out ~/mis-apps             # otra carpeta de salida
 
 Los proyectos se crean en `./proyectos/<nombre-de-la-app>/`, cada uno con su propio README explicando cómo correrlo.
 
+## Cambiar el login de una app ya generada
+
+Quitar el login no es una edición de código: toca el modelo, los esquemas, el frontend y las pruebas. Es un cambio de plan, así que se regenera desde el `spec.json` con un flag:
+
+```bash
+python cli.py --spec proyectos/mi-app/spec.json --no-auth --yes --no-github
+```
+
+Al revés funciona igual con `--auth`. Ojo: esto **regenera el proyecto desde cero**, así que pierdes cualquier cambio manual que le hayas hecho al código. Para cambios que no están en el plan, usa el modo iteración.
+
 ## Modo iteración: cambiar una app ya generada
 
 No hay que regenerar nada. Le dices el cambio en lenguaje natural y edita el código existente:
@@ -151,6 +161,7 @@ Dos detalles de las sesiones de nube:
 | `--platform web\|mobile\|both` | Fuerza la plataforma. |
 | `--idea "texto"` | Pasa la idea sin preguntarla. |
 | `--no-github` | No sube nada. |
+| `--no-auth` / `--auth` | Quita o pone el login, sobrescribiendo el plan. |
 
 Variables opcionales en `.env`:
 - `ANTHROPIC_MODEL`: alias del modelo (`sonnet`, `opus`, `haiku`).

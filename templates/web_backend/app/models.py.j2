@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import (
-    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
-)
+from sqlalchemy import {= sa_imports | join(', ') =}
 
 from .database import Base
 

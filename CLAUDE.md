@@ -34,6 +34,7 @@ En su lugar, **haz tú la entrevista** en la conversación y luego genera el pro
 - `--platform web|mobile|both`: fuerza la plataforma.
 - `--idea "texto"`: pasa la idea sin preguntarla.
 - `--no-github`: no sube nada.
+- `--no-auth` / `--auth`: sobrescribe `needs_auth` del spec. Quitar el login es un cambio de plan (toca modelo, esquemas, frontend y pruebas), así que se regenera con este flag en vez de editar a mano con el modo iteración.
 - `--out CARPETA`: dónde dejar el proyecto (default `proyectos/`).
 
 Sin terminal interactiva y sin `--yes`, el CLI falla con un mensaje claro en vez de colgarse. Eso es a propósito.

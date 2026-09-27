@@ -59,6 +59,15 @@ def parse_args() -> argparse.Namespace:
         "--platform", choices=["web", "mobile", "both"],
         help="Plataforma, para no tener que elegirla en la entrevista",
     )
+    auth = p.add_mutually_exclusive_group()
+    auth.add_argument(
+        "--no-auth", action="store_true",
+        help="Generar la app SIN login (sobrescribe lo que diga el spec)",
+    )
+    auth.add_argument(
+        "--auth", action="store_true",
+        help="Generar la app CON login (sobrescribe lo que diga el spec)",
+    )
 
     g = p.add_argument_group("modo iteración (cambiar una app ya generada)")
     g.add_argument(
@@ -95,14 +104,25 @@ def require_interactive(args: argparse.Namespace) -> None:
     sys.exit(2)
 
 
+def aplicar_overrides(spec: AppSpec, args: argparse.Namespace) -> None:
+    """Aplica los flags que sobrescriben el plan."""
+    if args.platform:
+        spec.platform = args.platform  # type: ignore[assignment]
+    if args.no_auth and spec.needs_auth:
+        spec.needs_auth = False
+        console.print("[dim]Quitando el login (--no-auth)[/dim]")
+    elif args.auth and not spec.needs_auth:
+        spec.needs_auth = True
+        console.print("[dim]Agregando login (--auth)[/dim]")
+
+
 def get_spec(args: argparse.Namespace) -> tuple[AppSpec, bool]:
     """Devuelve (spec, use_llm)."""
     auto = args.yes
 
     if args.spec:
         spec = AppSpec.from_json_file(args.spec)
-        if args.platform:
-            spec.platform = args.platform  # type: ignore[assignment]
+        aplicar_overrides(spec, args)
         return confirm_spec_loop(spec, None, auto=auto), llm.available()
 
     if args.demo:
@@ -117,7 +137,9 @@ def get_spec(args: argparse.Namespace) -> tuple[AppSpec, bool]:
                     questionary.Choice("🌐📱 Ambas", "both"),
                 ],
             ).ask() or "web"
-        return confirm_spec_loop(demo_spec(platform), None, auto=auto), False
+        demo = demo_spec(platform)
+        aplicar_overrides(demo, args)
+        return confirm_spec_loop(demo, None, auto=auto), False
 
     # A partir de aquí hay entrevista, que siempre necesita terminal.
     require_interactive(args)
@@ -134,7 +156,9 @@ def get_spec(args: argparse.Namespace) -> tuple[AppSpec, bool]:
         sys.exit(1)
 
     console.print(f"[dim]Motor: {llm.backend_description()}[/dim]")
-    return Interview(idea=args.idea or "", platform=args.platform or "").run(), True
+    spec = Interview(idea=args.idea or "", platform=args.platform or "").run()
+    aplicar_overrides(spec, args)
+    return spec, True
 
 
 def maybe_publish(project: Path, spec: AppSpec | None, args: argparse.Namespace, ask: bool = True) -> None:
