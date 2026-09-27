@@ -18,11 +18,46 @@ import shutil
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+AQUI = Path(__file__).resolve().parent
+
+
+def _faltan_dependencias(paquete: str) -> None:
+    """Explica qué hacer en vez de escupir un traceback.
+
+    El caso típico: el usuario tiene activo el entorno virtual de una app
+    generada (que también se llama .venv) en vez del de code-clone, así que
+    el prompt se ve igual y no hay pista de qué pasó.
+    """
+    activo = os.environ.get("VIRTUAL_ENV", "")
+    propio = AQUI / ".venv"
+    print(f"\nFalta el paquete '{paquete}'.\n")
+    if activo and Path(activo).resolve() != propio.resolve():
+        print("Parece que tienes activo OTRO entorno virtual:")
+        print(f"  activo:  {activo}")
+        print(f"  el de code-clone: {propio}")
+        print("\nLos dos se llaman .venv, así que el prompt se ve igual. Activa el correcto:")
+        print(f"  source {propio / 'bin' / 'activate'}")
+    elif not activo:
+        print("No tienes ningún entorno virtual activo. Actívalo:")
+        print(f"  source {propio / 'bin' / 'activate'}")
+    else:
+        print("Instala las dependencias:")
+        print(f"  pip install -r {AQUI / 'requirements.txt'}")
+    print()
+    sys.exit(1)
+
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    _faltan_dependencias("python-dotenv")
 
 load_dotenv()
 
-import questionary  # noqa: E402
+try:
+    import questionary  # noqa: E402
+except ImportError:
+    _faltan_dependencias("questionary")
 from agent import llm  # noqa: E402
 from agent.ui import console  # noqa: E402
 from agent.generator import generate_project  # noqa: E402
@@ -206,6 +241,7 @@ def print_next_steps(project: Path, spec: AppSpec) -> None:
     if tiene_docker:
         console.print("\n[bold]Backend[/bold] (terminal 1):")
     console.print(f"  cd {project / 'backend'}")
+    console.print("  python3 -m venv .venv-app && source .venv-app/bin/activate")
     console.print("  pip install -r requirements.txt")
     console.print("  uvicorn app.main:app --reload")
     console.print("  [dim]→ http://localhost:8000/docs[/dim]")

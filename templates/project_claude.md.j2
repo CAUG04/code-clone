@@ -58,9 +58,14 @@ Toda entidad lleva `owner_id` con `ForeignKey("users.id")`, y su router filtra p
 
 ```bash
 cd backend
-pip install -r requirements.txt   # solo la primera vez
+python3 -m venv .venv-app && source .venv-app/bin/activate   # solo la primera vez
+pip install -r requirements.txt
 pytest
 ```
+
+El entorno del proyecto se llama `.venv-app` a propósito: si se llamara `.venv`
+sería indistinguible del de code-clone en el prompt del shell, y activar el
+equivocado da un `ModuleNotFoundError` sin pista de la causa.
 
 - `tests/test_api.py` — CRUD de cada entidad, validación, 404s, orden de la lista.
 - `tests/test_security.py` — {% if spec.needs_auth %}autenticación obligatoria, tokens inválidos y expirados, **aislamiento entre usuarios**, contraseñas con hash y sal, {% endif %}inyección SQL y entradas maliciosas.

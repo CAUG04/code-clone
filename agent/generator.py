@@ -251,7 +251,7 @@ def _synthetic_seed(spec: AppSpec) -> dict:
 
 def _gitignore() -> str:
     return "\n".join([
-        "# Python", "__pycache__/", "*.pyc", ".venv/", "venv/", "*.db", ".env",
+        "# Python", "__pycache__/", "*.pyc", ".venv/", ".venv-app/", "venv/", "*.db", ".env",
         "", "# Node", "node_modules/", "dist/", ".expo/", "web-build/",
         "", "# Playwright", "test-results/", "playwright-report/", "playwright/.cache/",
         "", "# SO", ".DS_Store", "",
@@ -418,7 +418,7 @@ def _readme(spec: AppSpec) -> str:
         "",
         "```bash",
         "cd backend",
-        "python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\\Scripts\\activate",
+        "python3 -m venv .venv-app && source .venv-app/bin/activate   # Windows: .venv-app\\Scripts\\activate",
         "pip install -r requirements.txt",
         "uvicorn app.main:app --reload",
         "```",
